@@ -314,6 +314,43 @@ router.put('/:id', checkTeamPermissions('edit'), async (req, res) => {
   }
 });
 
+// Cambiar contraseña de un usuario (solo admin)
+router.patch('/:id/password', requireRole('admin'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { password } = req.body;
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'La nueva contraseña debe tener al menos 6 caracteres'
+      });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Usuario no encontrado'
+      });
+    }
+
+    user.password = password;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Contraseña actualizada exitosamente'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error al cambiar la contraseña',
+      error: error.message
+    });
+  }
+});
+
 // Eliminar permanentemente (solo admin)
 // COLOCADA ANTES de /:id para evitar que sea capturada por la ruta de soft delete
 router.delete('/:id/permanent', requireRole('admin'), async (req, res) => {
