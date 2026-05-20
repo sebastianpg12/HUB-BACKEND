@@ -213,7 +213,7 @@ router.get('/mine', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { assignedTo, status } = req.query;
-    
+
     // Construir filtros
     let filter = {};
     if (assignedTo) {
@@ -227,9 +227,28 @@ router.get('/', async (req, res) => {
       .populate('clientId', 'name email company')
       .populate('assignedTo', 'name email role photo avatar')
       .populate('createdBy', 'name email')
+      .populate('comments.userId', 'name email photo')
       .sort({ createdAt: -1 });
-    
+
     res.json(activities);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Obtener actividad por ID (con comentarios poblados)
+router.get('/:id', async (req, res) => {
+  try {
+    const activity = await Activity.findById(req.params.id)
+      .populate('clientId', 'name email company')
+      .populate('assignedTo', 'name email role photo avatar')
+      .populate('createdBy', 'name email')
+      .populate('comments.userId', 'name email photo');
+
+    if (!activity) {
+      return res.status(404).json({ error: 'Actividad no encontrada' });
+    }
+    res.json(activity);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -465,5 +484,68 @@ router.post(
     }
   }
 );
+
+// Editar comentario (solo el autor)
+router.put('/:id/comments/:commentId', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?._id || req.user?.id;
+    const { text } = req.body;
+
+    const activity = await Activity.findById(req.params.id);
+    if (!activity) return res.status(404).json({ error: 'Actividad no encontrada' });
+
+    const comment = activity.comments.id(req.params.commentId);
+    if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
+
+    if (String(comment.userId) !== String(userId)) {
+      return res.status(403).json({ error: 'Solo el autor puede editar su comentario' });
+    }
+
+    comment.text = text;
+    await activity.save();
+
+    const populated = await Activity.findById(activity._id)
+      .populate('clientId', 'name email company')
+      .populate('assignedTo', 'name email role photo phone avatar')
+      .populate('createdBy', 'name email')
+      .populate('comments.userId', 'name email photo');
+
+    res.json(populated);
+  } catch (error) {
+    console.error('Error editando comentario:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Eliminar comentario (solo el autor)
+router.delete('/:id/comments/:commentId', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?._id || req.user?.id;
+
+    const activity = await Activity.findById(req.params.id);
+    if (!activity) return res.status(404).json({ error: 'Actividad no encontrada' });
+
+    const comment = activity.comments.id(req.params.commentId);
+    if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
+
+    if (String(comment.userId) !== String(userId)) {
+      return res.status(403).json({ error: 'Solo el autor puede eliminar su comentario' });
+    }
+
+    activity.comments.pull(req.params.commentId);
+    await activity.save();
+
+    const populated = await Activity.findById(activity._id)
+      .populate('clientId', 'name email company')
+      .populate('assignedTo', 'name email role photo phone avatar')
+      .populate('createdBy', 'name email')
+      .populate('comments.userId', 'name email photo');
+
+    res.json(populated);
+  } catch (error) {
+    console.error('Error eliminando comentario:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 module.exports = router;

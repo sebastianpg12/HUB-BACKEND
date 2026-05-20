@@ -90,6 +90,7 @@ router.get('/', async (req, res) => {
       .populate('parentTask', 'title type status')
       .populate('blockedBy', 'title status')
       .populate('activeSessions.userId', 'name email photo')
+      .populate('comments.userId', 'name email photo')
       .sort({ priority: -1, updatedAt: -1 });
     
     res.json(tasks);
@@ -307,6 +308,57 @@ router.post('/:id/comments', taskCommentImageUpload.array('images', 10), async (
     res.json(task);
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+// Editar comentario de tarea (solo el autor)
+router.put('/:id/comments/:commentId', async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    const { text } = req.body;
+
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
+
+    const comment = task.comments.id(req.params.commentId);
+    if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
+
+    if (String(comment.userId) !== String(userId)) {
+      return res.status(403).json({ error: 'Solo el autor puede editar su comentario' });
+    }
+
+    comment.text = text;
+    await task.save();
+    await task.populate('comments.userId', 'name email photo');
+
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Eliminar comentario de tarea (solo el autor)
+router.delete('/:id/comments/:commentId', async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+
+    const task = await Task.findById(req.params.id);
+    if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
+
+    const comment = task.comments.id(req.params.commentId);
+    if (!comment) return res.status(404).json({ error: 'Comentario no encontrado' });
+
+    if (String(comment.userId) !== String(userId)) {
+      return res.status(403).json({ error: 'Solo el autor puede eliminar su comentario' });
+    }
+
+    task.comments.pull(req.params.commentId);
+    await task.save();
+    await task.populate('comments.userId', 'name email photo');
+
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
