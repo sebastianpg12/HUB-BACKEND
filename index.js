@@ -132,8 +132,9 @@ db.once('open', async () => {
   await ensureDefaultRoles();
 
   // Inicializar el servicio de cron para reportes de tareas
-  const { initTaskReportsCron } = require('./services/cronService');
+  const { initTaskReportsCron, initTeamReportsCron } = require('./services/cronService');
   initTaskReportsCron(app);
+  initTeamReportsCron(app);
 
   // ─── SLA Alert System (Every 15 minutes) ───
   setInterval(async () => {

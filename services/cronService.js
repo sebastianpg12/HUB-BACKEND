@@ -134,4 +134,71 @@ function initTaskReportsCron(app) {
   console.log('✅ Cron jobs para reportes de tareas inicializados');
 }
 
-module.exports = { initTaskReportsCron };
+// ═══════════════════════════════════════════════════════════════════════════
+// Team Report Cron (Email reports programados)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const { sendTeamReport } = require('../services/teamReportService');
+
+function initTeamReportsCron(app) {
+  console.log('🔄 Inicializando cron para reportes de equipo por email...');
+
+  let teamReportJob;
+
+  async function updateTeamReportCron() {
+    try {
+      const settings = await Setting.findOne({ key: 'teamReports' });
+      if (!settings?.value?.enabled) {
+        if (teamReportJob) { teamReportJob.stop(); teamReportJob = null; }
+        console.log('📧 Team report cron: deshabilitado');
+        return;
+      }
+
+      const cfg = settings.value;
+      if (teamReportJob) { teamReportJob.stop(); }
+
+      let cronExpr;
+      const h = cfg.hour || 8;
+      const m = cfg.minute || 0;
+
+      if (cfg.frequency === 'daily') {
+        cronExpr = `0 ${m} ${h} * * 1,2,3,4,5`; // L-V
+      } else if (cfg.frequency === 'monthly') {
+        cronExpr = `0 ${m} ${h} 1 * *`; // Día 1 de cada mes
+      } else {
+        // weekly (default)
+        const dow = cfg.dayOfWeek ?? 1; // lunes
+        cronExpr = `0 ${m} ${h} * * ${dow}`;
+      }
+
+      console.log(`📧 Team report cron programado: ${cronExpr} (${cfg.frequency})`);
+
+      teamReportJob = cron.schedule(cronExpr, async () => {
+        console.log('⏰ Ejecutando reporte de equipo programado...');
+        try {
+          const result = await sendTeamReport({
+            recipients: cfg.recipients,
+            period: cfg.period || 'week',
+            department: cfg.department,
+          });
+          console.log('✅ Reporte de equipo enviado:', result.success);
+
+          // Actualizar lastRun
+          settings.value.lastRun = new Date();
+          settings.markModified('value');
+          await settings.save();
+        } catch (err) {
+          console.error('❌ Error en reporte de equipo programado:', err.message);
+        }
+      });
+    } catch (error) {
+      console.error('❌ Error configurando team report cron:', error);
+    }
+  }
+
+  updateTeamReportCron();
+  app.set('updateTeamReportsCron', updateTeamReportCron);
+  console.log('✅ Cron para reportes de equipo inicializado');
+}
+
+module.exports = { initTaskReportsCron, initTeamReportsCron };

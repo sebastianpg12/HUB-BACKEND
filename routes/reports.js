@@ -577,4 +577,125 @@ router.get('/executive-summary', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// KPIs por persona y tendencias (Dashboard v2)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const {
+  getTeamKPIs,
+  getWeeklyTrends,
+  getMonthlyTrends,
+  generateTeamSummary,
+  sendTeamReport,
+} = require('../services/teamReportService');
+
+// GET /api/reports/kpis?period=month&department=...
+router.get('/kpis', async (req, res) => {
+  try {
+    const { period, department } = req.query;
+    const data = await getTeamKPIs({ period, department });
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching KPIs:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/reports/trends/weekly?department=...
+router.get('/trends/weekly', async (req, res) => {
+  try {
+    const data = await getWeeklyTrends({ department: req.query.department });
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/reports/trends/monthly?department=...
+router.get('/trends/monthly', async (req, res) => {
+  try {
+    const data = await getMonthlyTrends({ department: req.query.department });
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/reports/team-summary?period=week&department=...
+router.get('/team-summary', async (req, res) => {
+  try {
+    const { period, department } = req.query;
+    const data = await generateTeamSummary({ period, department });
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/reports/send-team-report (ejecución manual)
+router.post('/send-team-report', async (req, res) => {
+  try {
+    const { recipients, period, department } = req.body;
+    const result = await sendTeamReport({ recipients, period, department });
+    res.json(result);
+  } catch (error) {
+    console.error('Error sending team report:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Configuración de reportes programados
+// ═══════════════════════════════════════════════════════════════════════════
+
+const Setting = require('../models/Setting');
+
+// GET /api/reports/schedule-config
+router.get('/schedule-config', async (req, res) => {
+  try {
+    let settings = await Setting.findOne({ key: 'teamReports' });
+    if (!settings) {
+      settings = new Setting({
+        key: 'teamReports',
+        value: {
+          enabled: false,
+          frequency: 'weekly',       // weekly | daily | monthly
+          dayOfWeek: 1,              // 0=dom, 1=lun ... (para weekly)
+          hour: 8,                   // hora Colombia
+          minute: 0,
+          period: 'week',            // período de datos del reporte
+          recipients: [],
+          department: null,
+          lastRun: null,
+        },
+      });
+      await settings.save();
+    }
+    res.json({ success: true, data: settings.value });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PUT /api/reports/schedule-config
+router.put('/schedule-config', async (req, res) => {
+  try {
+    let settings = await Setting.findOne({ key: 'teamReports' });
+    if (!settings) {
+      settings = new Setting({ key: 'teamReports', value: {} });
+    }
+    const allowed = ['enabled', 'frequency', 'dayOfWeek', 'hour', 'minute', 'period', 'recipients', 'department'];
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) {
+        settings.value[key] = req.body[key];
+      }
+    }
+    settings.markModified('value');
+    await settings.save();
+    res.json({ success: true, data: settings.value });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;
