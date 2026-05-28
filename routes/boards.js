@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
 // Obtener board por ID
 router.get('/:id', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id)
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId })
       .populate('createdBy', 'name email photo')
       .populate('members.userId', 'name email photo role')
       .populate('client', 'name company email phone');
@@ -45,7 +45,7 @@ router.get('/:id', async (req, res) => {
 // Obtener board con todas sus tareas
 router.get('/:id/full', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id)
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId })
       .populate('createdBy', 'name email photo')
       .populate('members.userId', 'name email photo role');
     
@@ -120,7 +120,7 @@ router.post('/', async (req, res) => {
 // Actualizar board
 router.put('/:id', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -150,7 +150,7 @@ router.put('/:id', async (req, res) => {
 router.post('/:id/members', async (req, res) => {
   try {
     const { userId, role } = req.body;
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -168,7 +168,7 @@ router.post('/:id/members', async (req, res) => {
 // Remover miembro del board
 router.delete('/:id/members/:userId', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -185,7 +185,7 @@ router.delete('/:id/members/:userId', async (req, res) => {
 // Agregar columna al board
 router.post('/:id/columns', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -203,7 +203,7 @@ router.post('/:id/columns', async (req, res) => {
 router.put('/:id/columns/reorder', async (req, res) => {
   try {
     const { columns } = req.body;
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -223,7 +223,7 @@ router.put('/:id/columns/reorder', async (req, res) => {
 // Crear sprint
 router.post('/:id/sprints', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -244,7 +244,7 @@ router.post('/:id/sprints', async (req, res) => {
 // Obtener sprint activo
 router.get('/:id/sprints/active', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -271,7 +271,7 @@ router.get('/:id/sprints/active', async (req, res) => {
 // Activar sprint
 router.patch('/:id/sprints/:sprintId/activate', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -307,7 +307,7 @@ router.patch('/:id/sprints/:sprintId/activate', async (req, res) => {
 // Completar sprint
 router.patch('/:id/sprints/:sprintId/complete', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -343,7 +343,7 @@ router.patch('/:id/sprints/:sprintId/complete', async (req, res) => {
 // Actualizar sprint
 router.patch('/:id/sprints/:sprintId', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -376,7 +376,7 @@ router.patch('/:id/sprints/:sprintId', async (req, res) => {
 // Eliminar sprint
 router.delete('/:id/sprints/:sprintId', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -415,7 +415,7 @@ router.delete('/:id/sprints/:sprintId', async (req, res) => {
 router.post('/:id/github/connect', async (req, res) => {
   try {
     const { repoOwner, repoName, defaultBranch } = req.body;
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -440,7 +440,7 @@ router.post('/:id/github/connect', async (req, res) => {
 // Desconectar board de GitHub
 router.post('/:id/github/disconnect', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -458,7 +458,7 @@ router.post('/:id/github/disconnect', async (req, res) => {
 // Archivar board
 router.patch('/:id/archive', async (req, res) => {
   try {
-    const board = await Board.findById(req.params.id);
+    const board = await Board.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });
@@ -477,7 +477,7 @@ router.patch('/:id/archive', async (req, res) => {
 // Eliminar board
 router.delete('/:id', async (req, res) => {
   try {
-    const board = await Board.findByIdAndDelete(req.params.id);
+    const board = await Board.findOneAndDelete({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!board) {
       return res.status(404).json({ error: 'Board no encontrado' });

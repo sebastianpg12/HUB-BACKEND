@@ -249,7 +249,7 @@ router.get('/', async (req, res) => {
 // Obtener actividad por ID (con comentarios poblados)
 router.get('/:id', async (req, res) => {
   try {
-    const activity = await Activity.findById(req.params.id)
+    const activity = await Activity.findOne({ _id: req.params.id, organizationId: req.organizationId })
       .populate('clientId', 'name email company')
       .populate('assignedTo', 'name email role photo avatar')
       .populate('createdBy', 'name email')
@@ -307,7 +307,7 @@ router.put('/:id', async (req, res) => {
 router.patch('/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
-    const activity = await Activity.findById(req.params.id);
+    const activity = await Activity.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!activity) {
       return res.status(404).json({ error: 'Actividad no encontrada' });
@@ -408,7 +408,7 @@ router.patch('/:id/progress', async (req, res) => {
 router.post('/:id/timer', async (req, res) => {
   try {
     const { action, userId, minutes } = req.body; // action: 'start' | 'stop' | 'add_manual'
-    const activity = await Activity.findById(req.params.id);
+    const activity = await Activity.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!activity) return res.status(404).json({ error: 'Actividad no encontrada' });
 
     if (!activity.activeSessions) activity.activeSessions = [];
@@ -448,7 +448,7 @@ router.post('/:id/timer', async (req, res) => {
 // Eliminar actividad
 router.delete('/:id', async (req, res) => {
   try {
-    const activity = await Activity.findByIdAndDelete(req.params.id);
+    const activity = await Activity.findOneAndDelete({ _id: req.params.id, organizationId: req.organizationId });
     if (!activity) {
       return res.status(404).json({ error: 'Actividad no encontrada' });
     }
@@ -477,7 +477,7 @@ router.post(
         return res.status(400).json({ error: 'El comentario no puede estar vacío' });
       }
 
-      const activity = await Activity.findById(req.params.id);
+      const activity = await Activity.findOne({ _id: req.params.id, organizationId: req.organizationId });
       if (!activity) return res.status(404).json({ error: 'Actividad no encontrada' });
 
       // Construir URLs públicas de las imágenes
@@ -527,7 +527,7 @@ router.put('/:id/comments/:commentId', authenticateToken, async (req, res) => {
     const userId = req.user?._id || req.user?.id;
     const { text } = req.body;
 
-    const activity = await Activity.findById(req.params.id);
+    const activity = await Activity.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!activity) return res.status(404).json({ error: 'Actividad no encontrada' });
 
     const comment = activity.comments.id(req.params.commentId);
@@ -558,7 +558,7 @@ router.delete('/:id/comments/:commentId', authenticateToken, async (req, res) =>
   try {
     const userId = req.user?._id || req.user?.id;
 
-    const activity = await Activity.findById(req.params.id);
+    const activity = await Activity.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!activity) return res.status(404).json({ error: 'Actividad no encontrada' });
 
     const comment = activity.comments.id(req.params.commentId);

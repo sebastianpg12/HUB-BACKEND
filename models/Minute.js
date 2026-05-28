@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const MinuteSchema = new mongoose.Schema({
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
   title: String,
   content: String,
   date: Date,

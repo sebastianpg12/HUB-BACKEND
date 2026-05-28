@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const ActivitySchema = new mongoose.Schema({
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
   title: { type: String, required: true },
   description: String,
   date: Date,

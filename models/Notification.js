@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const NotificationSchema = new mongoose.Schema({
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
   // Destinatario
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
 

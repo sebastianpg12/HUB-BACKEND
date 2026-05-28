@@ -20,9 +20,9 @@ const ticketCommentSchema = new mongoose.Schema({
 });
 
 const ticketSchema = new mongoose.Schema({
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
   ticketNumber: {
-    type: String,
-    unique: true
+    type: String
   },
   subject: {
     type: String,
@@ -78,11 +78,15 @@ const ticketSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Middleware to generate ticket number before saving
+// ticketNumber es único dentro de cada organización (no global)
+ticketSchema.index({ organizationId: 1, ticketNumber: 1 }, { unique: true });
+
+// Middleware to generate ticket number before saving (per-organization sequence)
 ticketSchema.pre('save', async function(next) {
   if (this.isNew && !this.ticketNumber) {
     try {
-      const lastTicket = await this.constructor.findOne({}, {}, { sort: { 'createdAt': -1 } });
+      const lastTicket = await this.constructor
+        .findOne({ organizationId: this.organizationId }, {}, { sort: { createdAt: -1 } });
       let nextNumber = 1;
       if (lastTicket && lastTicket.ticketNumber) {
         const lastNumberMatch = lastTicket.ticketNumber.match(/TK-(\d+)/);

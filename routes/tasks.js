@@ -142,7 +142,7 @@ router.get('/my-tasks', async (req, res) => {
 // Obtener una tarea por ID
 router.get('/:id', async (req, res) => {
   try {
-    const task = await Task.findById(req.params.id)
+    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId })
       .populate('assignedTo', 'name email photo role department')
       .populate('createdBy', 'name email photo')
       .populate('parentTask', 'title type status')
@@ -213,7 +213,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
-    const task = await Task.findById(req.params.id);
+    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!task) {
       return res.status(404).json({ error: 'Tarea no encontrada' });
@@ -246,7 +246,7 @@ router.patch('/:id/move', async (req, res) => {
     const { boardStatus } = req.body;
     const userId = req.user.id || req.user._id;
     
-    const task = await Task.findById(req.params.id);
+    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!task) {
       return res.status(404).json({ error: 'Tarea no encontrada' });
@@ -301,7 +301,7 @@ router.post('/:id/comments', taskCommentImageUpload.array('images', 10), async (
       return res.status(400).json({ error: 'El comentario no puede estar vacío' });
     }
 
-    const task = await Task.findById(req.params.id);
+    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!task) {
       return res.status(404).json({ error: 'Tarea no encontrada' });
     }
@@ -344,7 +344,7 @@ router.put('/:id/comments/:commentId', async (req, res) => {
     const userId = req.user.id || req.user._id;
     const { text } = req.body;
 
-    const task = await Task.findById(req.params.id);
+    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
 
     const comment = task.comments.id(req.params.commentId);
@@ -369,7 +369,7 @@ router.delete('/:id/comments/:commentId', async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
 
-    const task = await Task.findById(req.params.id);
+    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
 
     const comment = task.comments.id(req.params.commentId);
@@ -398,7 +398,7 @@ router.post('/:id/attachments', async (req, res) => {
       uploadedBy: userId
     };
     
-    const task = await Task.findById(req.params.id);
+    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!task) {
       return res.status(404).json({ error: 'Tarea no encontrada' });
@@ -415,7 +415,7 @@ router.post('/:id/attachments', async (req, res) => {
 // Actualizar información de GitHub
 router.patch('/:id/github', async (req, res) => {
   try {
-    const task = await Task.findById(req.params.id);
+    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!task) {
       return res.status(404).json({ error: 'Tarea no encontrada' });
@@ -435,7 +435,7 @@ router.patch('/:id/github', async (req, res) => {
 router.post('/:id/timer/start', async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
-    const task = await Task.findById(req.params.id);
+    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!task) {
       return res.status(404).json({ error: 'Tarea no encontrada' });
@@ -467,7 +467,7 @@ router.post('/:id/timer/start', async (req, res) => {
 router.post('/:id/timer/stop', async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
-    const task = await Task.findById(req.params.id);
+    const task = await Task.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!task) {
       return res.status(404).json({ error: 'Tarea no encontrada' });
@@ -517,7 +517,7 @@ router.post('/:id/timer/stop', async (req, res) => {
 // Eliminar tarea
 router.delete('/:id', async (req, res) => {
   try {
-    const task = await Task.findByIdAndDelete(req.params.id);
+    const task = await Task.findOneAndDelete({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!task) {
       return res.status(404).json({ error: 'Tarea no encontrada' });

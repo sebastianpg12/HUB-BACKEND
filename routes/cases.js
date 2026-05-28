@@ -60,8 +60,8 @@ router.get('/', async (req, res) => {
   try {
     const { tipo, estado, prioridad, cliente_id, asignado_a, categoria, page = 1, limit = 10 } = req.query;
     
-    // Construir filtros
-    let filters = {};
+    // Construir filtros (organizationId explícito como defensa en profundidad — plugin lo refuerza)
+    let filters = { organizationId: req.organizationId };
     if (tipo) filters.tipo = tipo;
     if (estado) filters.estado = estado;
     if (prioridad) filters.prioridad = prioridad;
@@ -101,7 +101,7 @@ router.get('/', async (req, res) => {
 // GET - Obtener caso por ID
 router.get('/:id', async (req, res) => {
   try {
-    const case_item = await Case.findById(req.params.id)
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId })
       .populate('cliente_id', 'nombre empresa email telefono')
       .populate('asignado_a', 'name email role avatar')
       .populate('comentarios.autor', 'name email avatar')
@@ -153,10 +153,10 @@ router.post('/', upload.array('archivos', 10), async (req, res) => {
       }));
     }
     
-    const newCase = new Case(caseData);
+    const newCase = new Case({ ...caseData, organizationId: req.organizationId });
     const savedCase = await newCase.save();
     
-    const populatedCase = await Case.findById(savedCase._id)
+    const populatedCase = await Case.findOne({ _id: savedCase._id, organizationId: req.organizationId })
       .populate('cliente_id', 'nombre empresa email')
       .populate('asignado_a', 'name email role');
     
@@ -175,7 +175,7 @@ router.post('/', upload.array('archivos', 10), async (req, res) => {
 // POST - Subir archivos a un caso
 router.post('/:id/upload', upload.array('files', 5), async (req, res) => {
   try {
-    const case_item = await Case.findById(req.params.id);
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!case_item) {
       return res.status(404).json({ error: 'Caso no encontrado' });
     }
@@ -204,7 +204,7 @@ router.post('/:id/upload', upload.array('files', 5), async (req, res) => {
 // DELETE - Eliminar archivo de un caso
 router.delete('/:id/files/:fileIndex', async (req, res) => {
   try {
-    const case_item = await Case.findById(req.params.id);
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!case_item) {
       return res.status(404).json({ error: 'Caso no encontrado' });
     }
@@ -239,7 +239,7 @@ router.put('/:id', upload.array('archivos', 10), async (req, res) => {
     console.log('Updating case with body:', req.body);
     console.log('Files received:', req.files);
     
-    const case_item = await Case.findById(req.params.id);
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!case_item) {
       return res.status(404).json({ error: 'Caso no encontrado' });
     }
@@ -280,8 +280,8 @@ router.put('/:id', upload.array('archivos', 10), async (req, res) => {
       updateData.archivos = [...case_item.archivos, ...newFiles];
     }
     
-    const updatedCase = await Case.findByIdAndUpdate(
-      req.params.id,
+    const updatedCase = await Case.findOneAndUpdate(
+      { _id: req.params.id, organizationId: req.organizationId },
       updateData,
       { new: true, runValidators: true }
     )
@@ -303,7 +303,7 @@ router.put('/:id', upload.array('archivos', 10), async (req, res) => {
 // POST - Agregar comentario a un caso
 router.post('/:id/comments', async (req, res) => {
   try {
-    const case_item = await Case.findById(req.params.id);
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!case_item) {
       return res.status(404).json({ error: 'Caso no encontrado' });
     }
@@ -318,7 +318,7 @@ router.post('/:id/comments', async (req, res) => {
     case_item.comentarios.push(comment);
     await case_item.save();
     
-    const updatedCase = await Case.findById(req.params.id)
+    const updatedCase = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId })
       .populate('cliente_id', 'nombre empresa email')
       .populate('asignado_a', 'name email role avatar')
       .populate('comentarios.autor', 'name email avatar')
@@ -336,8 +336,8 @@ router.put('/:id/progress', async (req, res) => {
   try {
     const { progreso } = req.body;
     
-    const case_item = await Case.findByIdAndUpdate(
-      req.params.id,
+    const case_item = await Case.findOneAndUpdate(
+      { _id: req.params.id, organizationId: req.organizationId },
       { progreso },
       { new: true }
     );
@@ -356,7 +356,7 @@ router.put('/:id/progress', async (req, res) => {
 // POST - Agregar hito a seguimiento
 router.post('/:id/milestones', async (req, res) => {
   try {
-    const case_item = await Case.findById(req.params.id);
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!case_item) {
       return res.status(404).json({ error: 'Caso no encontrado' });
     }
@@ -381,7 +381,7 @@ router.post('/:id/milestones', async (req, res) => {
 // PUT - Marcar hito como completado
 router.put('/:id/milestones/:milestoneIndex/complete', async (req, res) => {
   try {
-    const case_item = await Case.findById(req.params.id);
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!case_item) {
       return res.status(404).json({ error: 'Caso no encontrado' });
     }
@@ -405,7 +405,7 @@ router.put('/:id/milestones/:milestoneIndex/complete', async (req, res) => {
 // DELETE - Eliminar caso
 router.delete('/:id', async (req, res) => {
   try {
-    const case_item = await Case.findById(req.params.id);
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!case_item) {
       return res.status(404).json({ error: 'Caso no encontrado' });
     }
@@ -418,7 +418,7 @@ router.delete('/:id', async (req, res) => {
       }
     });
     
-    await Case.findByIdAndDelete(req.params.id);
+    await Case.findOneAndDelete({ _id: req.params.id, organizationId: req.organizationId });
     res.json({ message: 'Caso eliminado exitosamente' });
   } catch (error) {
     console.error('Error deleting case:', error);
@@ -480,7 +480,7 @@ router.get('/stats/summary', async (req, res) => {
 // POST - Agregar log diario a un caso
 router.post('/:id/daily-logs', async (req, res) => {
   try {
-    const case_item = await Case.findById(req.params.id);
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!case_item) {
       return res.status(404).json({ error: 'Caso no encontrado' });
     }
@@ -498,7 +498,7 @@ router.post('/:id/daily-logs', async (req, res) => {
     case_item.dailyLogs.unshift(log); // Lo más nuevo arriba
     await case_item.save();
     
-    const updatedCase = await Case.findById(req.params.id)
+    const updatedCase = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId })
       .populate('cliente_id', 'nombre empresa email')
       .populate('asignado_a', 'name email role avatar')
       .populate('comentarios.autor', 'name email avatar')
@@ -515,7 +515,7 @@ router.post('/:id/daily-logs', async (req, res) => {
 router.post('/:id/tickets', async (req, res) => {
   try {
     const { ticketId } = req.body;
-    const case_item = await Case.findById(req.params.id);
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
     
     if (!case_item) return res.status(404).json({ error: 'Caso no encontrado' });
     
@@ -524,7 +524,7 @@ router.post('/:id/tickets', async (req, res) => {
       await case_item.save();
     }
     
-    const populated = await Case.findById(case_item._id)
+    const populated = await Case.findOne({ _id: case_item._id, organizationId: req.organizationId })
       .populate('cliente_id', 'nombre empresa email')
       .populate('asignado_a', 'name email role avatar')
       .populate('comentarios.autor', 'name email avatar')
@@ -540,13 +540,13 @@ router.post('/:id/tickets', async (req, res) => {
 // DELETE - Desvincular ticket de un caso
 router.delete('/:id/tickets/:ticketId', async (req, res) => {
   try {
-    const case_item = await Case.findById(req.params.id);
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!case_item) return res.status(404).json({ error: 'Caso no encontrado' });
     
     case_item.linkedTickets = case_item.linkedTickets.filter(id => id.toString() !== req.params.ticketId);
     await case_item.save();
     
-    const populated = await Case.findById(case_item._id)
+    const populated = await Case.findOne({ _id: case_item._id, organizationId: req.organizationId })
       .populate('cliente_id', 'nombre empresa email')
       .populate('asignado_a', 'name email role avatar')
       .populate('comentarios.autor', 'name email avatar')

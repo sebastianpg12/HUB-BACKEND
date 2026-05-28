@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const wikiSchema = new mongoose.Schema({
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
   titulo: {
     type: String,
     required: true,

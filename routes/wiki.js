@@ -46,7 +46,7 @@ router.get('/', async (req, res) => {
 // Obtener un artículo por ID
 router.get('/:id', async (req, res) => {
   try {
-    const article = await Wiki.findById(req.params.id)
+    const article = await Wiki.findOne({ _id: req.params.id, organizationId: req.organizationId })
       .populate('autor', 'name email')
       .populate('linkedTickets');
     if (!article) return res.status(404).json({ message: 'Artículo no encontrado' });
@@ -82,7 +82,7 @@ router.post('/', upload.array('archivos', 5), async (req, res) => {
 router.put('/:id', upload.array('archivos', 5), async (req, res) => {
   try {
     const updateData = { ...req.body };
-    const article = await Wiki.findById(req.params.id);
+    const article = await Wiki.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!article) return res.status(404).json({ message: 'Artículo no encontrado' });
 
     if (req.files && req.files.length > 0) {
@@ -105,7 +105,7 @@ router.put('/:id', upload.array('archivos', 5), async (req, res) => {
 // Eliminar un artículo
 router.delete('/:id', async (req, res) => {
   try {
-    await Wiki.findByIdAndDelete(req.params.id);
+    await Wiki.findOneAndDelete({ _id: req.params.id, organizationId: req.organizationId });
     res.json({ message: 'Artículo eliminado' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -116,7 +116,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/tickets', async (req, res) => {
   try {
     const { ticketId } = req.body;
-    const wiki = await Wiki.findById(req.params.id);
+    const wiki = await Wiki.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!wiki) return res.status(404).json({ message: 'Artículo no encontrado' });
     
     if (!wiki.linkedTickets.includes(ticketId)) {
@@ -137,7 +137,7 @@ router.post('/:id/tickets', async (req, res) => {
 // DELETE - Desvincular ticket de un artículo de wiki
 router.delete('/:id/tickets/:ticketId', async (req, res) => {
   try {
-    const wiki = await Wiki.findById(req.params.id);
+    const wiki = await Wiki.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!wiki) return res.status(404).json({ message: 'Artículo no encontrado' });
     
     wiki.linkedTickets = wiki.linkedTickets.filter(id => id.toString() !== req.params.ticketId);

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User'); // Cambiado de Team a User
+const User = require('../models/User');
+const Membership = require('../models/Membership');
 const Role = require('../models/Role');
 const Setting = require('../models/Setting');
 const Task = require('../models/Task');
@@ -43,54 +44,54 @@ const checkTeamPermissions = (action) => {
   };
 };
 
-// Obtener todos los miembros del equipo (usuarios) con paginación
+// Obtener miembros del equipo (Memberships activos en la org) con paginación
 router.get('/', checkTeamPermissions('view'), async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 12;
     const skip = (page - 1) * limit;
 
-    // Filtros opcionales
-    const query = { isActive: true };
-    
-    const total = await User.countDocuments(query);
-    const team = await User.find(query)
-      .select('-password')
+    const baseFilter = { organization: req.organizationId, status: 'active' };
+
+    const total = await Membership.countDocuments(baseFilter);
+    const memberships = await Membership.find(baseFilter)
+      .populate({ path: 'user', select: '-password', match: { isActive: true } })
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
 
-    res.json({ 
-      success: true, 
-      data: team.map(user => ({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        avatar: user.avatar,
-        photo: user.photo,
-        department: user.department,
-        departmentRole: user.departmentRole,
-        supervisor: user.supervisor,
-        position: user.position,
-        phone: user.phone,
-        isActive: user.isActive,
-        lastLogin: user.lastLogin,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
-      })),
-      pagination: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit)
-      }
+    const data = memberships
+      .filter(m => m.user) // descartar memberships cuyo user fue desactivado
+      .map(m => ({
+        _id: m.user._id,
+        membershipId: m._id,
+        name: m.user.name,
+        email: m.user.email,
+        role: m.role, // role per-org (del Membership)
+        avatar: m.user.avatar,
+        photo: m.user.photo,
+        department: m.department || m.user.department,
+        departmentRole: m.departmentRole || m.user.departmentRole,
+        supervisor: m.supervisor || m.user.supervisor,
+        position: m.position || m.user.position,
+        phone: m.user.phone,
+        isOwner: m.isOwner,
+        isActive: m.user.isActive,
+        lastLogin: m.user.lastLogin,
+        createdAt: m.user.createdAt,
+        updatedAt: m.user.updatedAt
+      }));
+
+    res.json({
+      success: true,
+      data,
+      pagination: { total, page, limit, pages: Math.ceil(total / limit) }
     });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error al obtener el equipo', 
-      error: error.message 
+    res.status(500).json({
+      success: false,
+      message: 'Error al obtener el equipo',
+      error: error.message
     });
   }
 });
@@ -141,9 +142,24 @@ router.post('/', checkTeamPermissions('create'), async (req, res) => {
       ...(permissions && { permissions }),
       isActive: true
     });
-    
+
     await member.save();
-    
+
+    // Crear Membership en la organización activa para que aparezca en el equipo
+    await Membership.create({
+      user: member._id,
+      organization: req.organizationId,
+      role: role || 'employee',
+      status: 'active',
+      department,
+      departmentRole: departmentRole || 'member',
+      position,
+      supervisor: (supervisor && supervisor !== '') ? supervisor : null,
+      ...(permissions && { permissions }),
+      invitedBy: req.user._id,
+      acceptedAt: new Date()
+    });
+
     // Remover password de la respuesta
     const memberResponse = member.toJSON();
     

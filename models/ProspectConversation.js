@@ -44,6 +44,7 @@ const TimelineEntrySchema = new mongoose.Schema({
 })
 
 const ProspectConversationSchema = new mongoose.Schema({
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
   // Identidad
   prospectName: { type: String, required: true },
   company: { type: String },

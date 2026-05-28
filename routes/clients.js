@@ -2,76 +2,84 @@ const express = require('express');
 const router = express.Router();
 const Client = require('../models/Client');
 
-// Obtener todos los clientes
+// Helper: filtro base de tenant + (opcional) _id
+const tFilter = (req, extra = {}) => ({ organizationId: req.organizationId, ...extra });
+const tFilterById = (req) => ({ _id: req.params.id, organizationId: req.organizationId });
+
+// ── Listado y CRUD principal ──
 router.get('/', async (req, res) => {
-  const clients = await Client.find().sort({ createdAt: -1 });
+  const clients = await Client.find(tFilter(req)).sort({ createdAt: -1 });
   res.json(clients);
 });
 
-// Obtener cliente por ID (legacy support)
 router.get('/:id', async (req, res) => {
-  const client = await Client.findById(req.params.id);
+  const client = await Client.findOne(tFilterById(req));
   if (!client) return res.status(404).json({ message: 'Client not found' });
   res.json(client);
 });
 
-// Crear cliente
 router.post('/', async (req, res) => {
   const data = { ...req.body };
-  // Compat: map alternative keys
   if (data.nombre) data.name = data.nombre;
   if (data.telefono) data.phone = data.telefono;
+  data.organizationId = req.organizationId;
   const client = new Client(data);
   await client.save();
   res.json(client);
 });
 
-// Actualizar cliente
 router.put('/:id', async (req, res) => {
   const data = { ...req.body };
   if (data.nombre) data.name = data.nombre;
   if (data.telefono) data.phone = data.telefono;
-  const client = await Client.findByIdAndUpdate(req.params.id, data, { new: true });
+  delete data.organizationId; // nunca permitir reasignar org
+  const client = await Client.findOneAndUpdate(tFilterById(req), data, { new: true });
+  if (!client) return res.status(404).json({ message: 'Client not found' });
   res.json(client);
 });
 
-// Eliminar cliente
 router.delete('/:id', async (req, res) => {
-  await Client.findByIdAndDelete(req.params.id);
+  const result = await Client.findOneAndDelete(tFilterById(req));
+  if (!result) return res.status(404).json({ message: 'Client not found' });
   res.json({ success: true });
 });
 
-// Detail (wiki) endpoints
+// ── Detail (wiki) endpoints ──
 router.get('/:id/detail', async (req, res) => {
-  const client = await Client.findById(req.params.id);
+  const client = await Client.findOne(tFilterById(req));
   if (!client) return res.status(404).json({ message: 'Client not found' });
   res.json(client);
 });
 
 router.patch('/:id/detail', async (req, res) => {
-  const updates = req.body || {};
-  const client = await Client.findByIdAndUpdate(
-    req.params.id,
-    { $set: updates },
-    { new: true }
-  );
+  const updates = { ...(req.body || {}) };
+  delete updates.organizationId;
+  const client = await Client.findOneAndUpdate(tFilterById(req), { $set: updates }, { new: true });
   if (!client) return res.status(404).json({ message: 'Client not found' });
   res.json(client);
 });
 
-// Notes CRUD
+// ── Helper para sub-recursos: carga el cliente scoped por tenant ──
+async function loadOwnedClient(req, res) {
+  const client = await Client.findOne(tFilterById(req));
+  if (!client) {
+    res.status(404).json({ message: 'Client not found' });
+    return null;
+  }
+  return client;
+}
+
+// Notes
 router.post('/:id/notes', async (req, res) => {
+  const client = await loadOwnedClient(req, res); if (!client) return;
   const { content, author, pinned } = req.body;
-  const client = await Client.findById(req.params.id);
-  if (!client) return res.status(404).json({ message: 'Client not found' });
   client.notes.push({ content, author, pinned });
   await client.save();
   res.json(client.notes[client.notes.length - 1]);
 });
 
 router.put('/:id/notes/:noteId', async (req, res) => {
-  const client = await Client.findById(req.params.id);
-  if (!client) return res.status(404).json({ message: 'Client not found' });
+  const client = await loadOwnedClient(req, res); if (!client) return;
   const note = client.notes.id(req.params.noteId);
   if (!note) return res.status(404).json({ message: 'Note not found' });
   Object.assign(note, req.body);
@@ -80,8 +88,7 @@ router.put('/:id/notes/:noteId', async (req, res) => {
 });
 
 router.delete('/:id/notes/:noteId', async (req, res) => {
-  const client = await Client.findById(req.params.id);
-  if (!client) return res.status(404).json({ message: 'Client not found' });
+  const client = await loadOwnedClient(req, res); if (!client) return;
   const note = client.notes.id(req.params.noteId);
   if (!note) return res.status(404).json({ message: 'Note not found' });
   note.deleteOne();
@@ -89,18 +96,16 @@ router.delete('/:id/notes/:noteId', async (req, res) => {
   res.json({ success: true });
 });
 
-// Services CRUD
+// Services
 router.post('/:id/services', async (req, res) => {
-  const client = await Client.findById(req.params.id);
-  if (!client) return res.status(404).json({ message: 'Client not found' });
+  const client = await loadOwnedClient(req, res); if (!client) return;
   client.services.push(req.body);
   await client.save();
   res.json(client.services[client.services.length - 1]);
 });
 
 router.put('/:id/services/:serviceId', async (req, res) => {
-  const client = await Client.findById(req.params.id);
-  if (!client) return res.status(404).json({ message: 'Client not found' });
+  const client = await loadOwnedClient(req, res); if (!client) return;
   const service = client.services.id(req.params.serviceId);
   if (!service) return res.status(404).json({ message: 'Service not found' });
   Object.assign(service, req.body);
@@ -109,8 +114,7 @@ router.put('/:id/services/:serviceId', async (req, res) => {
 });
 
 router.delete('/:id/services/:serviceId', async (req, res) => {
-  const client = await Client.findById(req.params.id);
-  if (!client) return res.status(404).json({ message: 'Client not found' });
+  const client = await loadOwnedClient(req, res); if (!client) return;
   const service = client.services.id(req.params.serviceId);
   if (!service) return res.status(404).json({ message: 'Service not found' });
   service.deleteOne();
@@ -118,18 +122,16 @@ router.delete('/:id/services/:serviceId', async (req, res) => {
   res.json({ success: true });
 });
 
-// Commitments CRUD
+// Commitments
 router.post('/:id/commitments', async (req, res) => {
-  const client = await Client.findById(req.params.id);
-  if (!client) return res.status(404).json({ message: 'Client not found' });
+  const client = await loadOwnedClient(req, res); if (!client) return;
   client.commitments.push(req.body);
   await client.save();
   res.json(client.commitments[client.commitments.length - 1]);
 });
 
 router.put('/:id/commitments/:commitmentId', async (req, res) => {
-  const client = await Client.findById(req.params.id);
-  if (!client) return res.status(404).json({ message: 'Client not found' });
+  const client = await loadOwnedClient(req, res); if (!client) return;
   const item = client.commitments.id(req.params.commitmentId);
   if (!item) return res.status(404).json({ message: 'Commitment not found' });
   Object.assign(item, req.body);
@@ -138,15 +140,12 @@ router.put('/:id/commitments/:commitmentId', async (req, res) => {
 });
 
 router.delete('/:id/commitments/:commitmentId', async (req, res) => {
-  const client = await Client.findById(req.params.id);
-  if (!client) return res.status(404).json({ message: 'Client not found' });
+  const client = await loadOwnedClient(req, res); if (!client) return;
   const item = client.commitments.id(req.params.commitmentId);
   if (!item) return res.status(404).json({ message: 'Commitment not found' });
   item.deleteOne();
   await client.save();
   res.json({ success: true });
 });
-
-module.exports = router;
 
 module.exports = router;

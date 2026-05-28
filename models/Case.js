@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const CaseSchema = new mongoose.Schema({
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
   // Información básica del caso
   titulo: { 
     type: String, 

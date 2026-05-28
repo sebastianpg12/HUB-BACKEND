@@ -24,6 +24,15 @@ const userSchema = new mongoose.Schema({
     required: true,
     default: 'employee'
   },
+  // Rol de plataforma — independiente de Memberships. Si es true, este usuario es
+  // super-administrador de GEMS Hub: puede entrar a cualquier organización activa
+  // y gestionar tenants. NUNCA debe heredar permisos de tenant automáticamente para
+  // datos sensibles — solo abre la puerta de entrada.
+  isSuperAdmin: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
   avatar: {
     type: String,
     default: null

@@ -51,6 +51,7 @@ const CustomFieldSchema = new mongoose.Schema(
 
 const ClientSchema = new mongoose.Schema(
   {
+    organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     name: { type: String, required: true },
     email: String,
     phone: String,

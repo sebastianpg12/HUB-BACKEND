@@ -22,6 +22,7 @@ router.post('/', async (req, res) => {
   try {
     const { prospectName, company, createdBy, initialMessage } = req.body
     const conversation = new ProspectConversation({
+      organizationId: req.organizationId,
       prospectName,
       company,
       createdBy: createdBy || null,
@@ -38,7 +39,7 @@ router.post('/', async (req, res) => {
 // Listar todas
 router.get('/', async (req, res) => {
   try {
-    const conversations = await ProspectConversation.find()
+    const conversations = await ProspectConversation.find({ organizationId: req.organizationId })
       .populate('createdBy', 'name email')
       .populate('ownerId', 'name email')
       .sort({ lastUpdated: -1 })
@@ -51,7 +52,7 @@ router.get('/', async (req, res) => {
 // Obtener una
 router.get('/:id', async (req, res) => {
   try {
-    const conversation = await ProspectConversation.findById(req.params.id)
+    const conversation = await ProspectConversation.findOne({ _id: req.params.id, organizationId: req.organizationId })
       .populate('createdBy', 'name email')
       .populate('ownerId', 'name email')
     if (!conversation) return res.status(404).json({ error: 'No encontrada' })
@@ -65,7 +66,7 @@ router.get('/:id', async (req, res) => {
 router.post('/:id/message', async (req, res) => {
   try {
     const { role, content } = req.body
-    const conversation = await ProspectConversation.findById(req.params.id)
+    const conversation = await ProspectConversation.findOne({ _id: req.params.id, organizationId: req.organizationId })
     if (!conversation) return res.status(404).json({ error: 'No encontrada' })
     conversation.messages.push({ role, content })
     conversation.lastUpdated = Date.now()
@@ -79,7 +80,7 @@ router.post('/:id/message', async (req, res) => {
 // PATCH metadata (status, valor, fuente, contacto, owner, etc.) — granular
 router.patch('/:id', async (req, res) => {
   try {
-    const conversation = await ProspectConversation.findById(req.params.id)
+    const conversation = await ProspectConversation.findOne({ _id: req.params.id, organizationId: req.organizationId })
     if (!conversation) return res.status(404).json({ error: 'No encontrada' })
 
     const updates = {}
@@ -107,7 +108,7 @@ router.patch('/:id', async (req, res) => {
 // Compatibilidad: PUT también permite editar (legacy)
 router.put('/:id', async (req, res) => {
   try {
-    const conversation = await ProspectConversation.findById(req.params.id)
+    const conversation = await ProspectConversation.findOne({ _id: req.params.id, organizationId: req.organizationId })
     if (!conversation) return res.status(404).json({ error: 'No encontrada' })
 
     PATCHABLE_FIELDS.forEach((field) => {
@@ -124,7 +125,7 @@ router.put('/:id', async (req, res) => {
 // Eliminar prospecto
 router.delete('/:id', async (req, res) => {
   try {
-    const result = await ProspectConversation.findByIdAndDelete(req.params.id)
+    const result = await ProspectConversation.findOneAndDelete({ _id: req.params.id, organizationId: req.organizationId })
     if (!result) return res.status(404).json({ error: 'No encontrada' })
     res.json({ success: true })
   } catch (err) {
@@ -140,7 +141,7 @@ router.post('/:id/notes', async (req, res) => {
     if (!content || !content.trim()) {
       return res.status(400).json({ error: 'El contenido es requerido' })
     }
-    const conversation = await ProspectConversation.findById(req.params.id)
+    const conversation = await ProspectConversation.findOne({ _id: req.params.id, organizationId: req.organizationId })
     if (!conversation) return res.status(404).json({ error: 'No encontrada' })
 
     conversation.notes.unshift({ content, author })
@@ -158,7 +159,7 @@ router.post('/:id/notes', async (req, res) => {
 
 router.delete('/:id/notes/:noteId', async (req, res) => {
   try {
-    const conversation = await ProspectConversation.findById(req.params.id)
+    const conversation = await ProspectConversation.findOne({ _id: req.params.id, organizationId: req.organizationId })
     if (!conversation) return res.status(404).json({ error: 'No encontrada' })
     conversation.notes = conversation.notes.filter((n) => n._id.toString() !== req.params.noteId)
     await conversation.save()
@@ -176,7 +177,7 @@ router.post('/:id/tasks', async (req, res) => {
     if (!title || !title.trim()) {
       return res.status(400).json({ error: 'El título es requerido' })
     }
-    const conversation = await ProspectConversation.findById(req.params.id)
+    const conversation = await ProspectConversation.findOne({ _id: req.params.id, organizationId: req.organizationId })
     if (!conversation) return res.status(404).json({ error: 'No encontrada' })
 
     conversation.tasks.unshift({
@@ -196,7 +197,7 @@ router.post('/:id/tasks', async (req, res) => {
 // Toggle done/undone
 router.patch('/:id/tasks/:taskId/toggle', async (req, res) => {
   try {
-    const conversation = await ProspectConversation.findById(req.params.id)
+    const conversation = await ProspectConversation.findOne({ _id: req.params.id, organizationId: req.organizationId })
     if (!conversation) return res.status(404).json({ error: 'No encontrada' })
     const task = conversation.tasks.id(req.params.taskId)
     if (!task) return res.status(404).json({ error: 'Tarea no encontrada' })
@@ -218,7 +219,7 @@ router.patch('/:id/tasks/:taskId/toggle', async (req, res) => {
 
 router.delete('/:id/tasks/:taskId', async (req, res) => {
   try {
-    const conversation = await ProspectConversation.findById(req.params.id)
+    const conversation = await ProspectConversation.findOne({ _id: req.params.id, organizationId: req.organizationId })
     if (!conversation) return res.status(404).json({ error: 'No encontrada' })
     conversation.tasks = conversation.tasks.filter((t) => t._id.toString() !== req.params.taskId)
     await conversation.save()
@@ -237,7 +238,7 @@ router.post('/:id/timeline', async (req, res) => {
     if (!type || !description) {
       return res.status(400).json({ error: 'type y description son requeridos' })
     }
-    const conversation = await ProspectConversation.findById(req.params.id)
+    const conversation = await ProspectConversation.findOne({ _id: req.params.id, organizationId: req.organizationId })
     if (!conversation) return res.status(404).json({ error: 'No encontrada' })
 
     conversation.addTimelineEntry(type, description, meta)

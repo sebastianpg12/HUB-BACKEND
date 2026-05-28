@@ -1,10 +1,10 @@
 const mongoose = require('mongoose');
 
 const roleSchema = new mongoose.Schema({
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
   name: {
     type: String,
     required: true,
-    unique: true,
     trim: true
   },
   description: {
@@ -55,5 +55,8 @@ const roleSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+// name único dentro de cada organización
+roleSchema.index({ organizationId: 1, name: 1 }, { unique: true });
 
 module.exports = mongoose.model('Role', roleSchema);
