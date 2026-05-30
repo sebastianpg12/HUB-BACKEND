@@ -131,214 +131,29 @@ db.once('open', async () => {
   await ensureSupportUser();
   await ensureDefaultRoles();
 
-  // Inicializar el servicio de cron para reportes de tareas
-  const { initTaskReportsCron, initTeamReportsCron } = require('./services/cronService');
+  // Inicializar servicios de cron
+  const { initTaskReportsCron, initTeamReportsCron, initSlaCron } = require('./services/cronService');
   initTaskReportsCron(app);
   initTeamReportsCron(app);
-
-  // ─── SLA Alert System (Every 15 minutes) ───
-  setInterval(async () => {
-    try {
-      const { notifySLAAlert } = require('./services/emailService');
-      const Ticket = require('./models/Ticket');
-      
-      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-      
-      const overdueTickets = await Ticket.find({
-        status: 'new',
-        slaNotified: { $ne: true },
-        createdAt: { $lt: twoHoursAgo }
-      });
-
-      for (const ticket of overdueTickets) {
-        console.log(`[SLA] Ticket #${ticket.ticketNumber} is overdue! Sending alert.`);
-        await notifySLAAlert(ticket);
-        ticket.slaNotified = true;
-        await ticket.save();
-      }
-    } catch (err) {
-      console.error('[SLA] Error running background check:', err);
-    }
-  }, 15 * 60 * 1000); // 15 mins
+  initSlaCron();
 });
 
 // Socket.io connection handling
-io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
-  // Presence tracking maps
-  // userId -> connection count
-  if (!io.onlineUsers) {
-    io.onlineUsers = new Map();
-  }
-  // socket.id -> userId
-  if (!io.socketToUser) {
-    io.socketToUser = new Map();
-  }
-  
-  // Join user to their personal room
-  socket.on('join_user_room', (userId) => {
-    socket.join(`user_${userId}`);
-    console.log(`User ${userId} joined their room`);
-  // Map this socket to user
-  io.socketToUser.set(socket.id, userId);
-  const current = io.onlineUsers.get(userId) || 0;
-  io.onlineUsers.set(userId, current + 1);
-  // Broadcast presence update to all clients
-  const onlineList = Array.from(io.onlineUsers.keys());
-  io.emit('presence_update', onlineList);
-  });
-  
-  // Join chat room
-  socket.on('join_room', (roomId) => {
-    socket.join(`room_${roomId}`);
-    console.log(`User joined room: ${roomId}`);
-  });
-  
-  // Leave chat room
-  socket.on('leave_room', (roomId) => {
-    socket.leave(`room_${roomId}`);
-    console.log(`User left room: ${roomId}`);
-  });
-  
-  // Handle typing indicators
-  socket.on('typing_start', (data) => {
-    socket.to(`room_${data.roomId}`).emit('user_typing', {
-      userId: data.userId,
-      userName: data.userName,
-      roomId: data.roomId
-    });
-  });
-  
-  socket.on('typing_stop', (data) => {
-    socket.to(`room_${data.roomId}`).emit('user_stop_typing', {
-      userId: data.userId,
-      roomId: data.roomId
-    });
-  });
-  
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-    // Update presence maps
-    const userId = io.socketToUser.get(socket.id);
-    if (userId) {
-      const current = io.onlineUsers.get(userId) || 0;
-      if (current <= 1) {
-        io.onlineUsers.delete(userId);
-      } else {
-        io.onlineUsers.set(userId, current - 1);
-      }
-      io.socketToUser.delete(socket.id);
-      // Broadcast updated presence
-      const onlineList = Array.from(io.onlineUsers.keys());
-      io.emit('presence_update', onlineList);
-    }
-  });
-});
+require('./socket/index')(io);
 
 // --- INTEGRACIÓN WHATSAPP CON BAILEYS ---
-const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-let baileysSock = null;
-let baileysReady = false;
-let baileysQR = null;
-app.set('baileysSock', null);
-app.set('baileysReady', false);
+const whatsappService = require('./services/whatsappService');
+whatsappService.init(app);
+app.use('/api/whatsapp', require('./routes/whatsapp'));
+// Re-map the old wpp routes for backward compatibility
+app.use('/api', require('./routes/whatsapp')); 
 
-async function startBaileys() {
-  const { state, saveCreds } = await useMultiFileAuthState('baileys_auth');
-  const { version, isLatest } = await fetchLatestBaileysVersion();
-  baileysSock = makeWASocket({
-    version,
-    printQRInTerminal: true,
-    auth: state,
-    syncFullHistory: false,
-    defaultQueryTimeoutMs: 60000,
+// ─── Global Error Handling Middleware ───
+app.use((err, req, res, next) => {
+  console.error('[Global Error]', err.stack || err);
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal Server Error'
   });
-  app.set('baileysSock', baileysSock);
-
-  baileysSock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    if (qr) {
-      baileysQR = qr;
-      console.log('[Baileys] Escanea este QR para vincular WhatsApp:', qr);
-    }
-    if (connection === 'open') {
-      baileysReady = true;
-      app.set('baileysReady', true);
-      console.log('[Baileys] WhatsApp vinculado y listo para enviar mensajes');
-    }
-    if (connection === 'close') {
-      baileysReady = false;
-      app.set('baileysReady', false);
-      console.warn('[Baileys] WhatsApp desconectado:', lastDisconnect?.error?.message);
-      setTimeout(() => startBaileys(), 15000);
-    }
-  });
-
-  baileysSock.ev.on('creds.update', saveCreds);
-}
-
-startBaileys();
-app.post('/api/wpp-send', async (req, res) => {
-  if (!baileysReady) return res.status(503).json({ error: 'WhatsApp no vinculado' });
-  const { message, groupName } = req.body;
-  try {
-    // Buscar el grupo por nombre
-    const allGroups = await baileysSock.groupFetchAllParticipating();
-    let groupId = null;
-    if (groupName) {
-      for (const id in allGroups) {
-        const group = allGroups[id];
-        if (group.subject && group.subject.toLowerCase().includes(groupName.toLowerCase())) {
-          groupId = group.id;
-          break;
-        }
-      }
-    }
-    // Si no se especifica, buscar el grupo 'notificaciones'
-    if (!groupId) {
-      for (const id in allGroups) {
-        const group = allGroups[id];
-        if (group.subject && group.subject.toLowerCase().includes('notificaciones')) {
-          groupId = group.id;
-          break;
-        }
-      }
-    }
-    if (!groupId) return res.status(404).json({ error: 'No se encontró el grupo "notificaciones" vinculado' });
-    await baileysSock.sendMessage(groupId, { text: message });
-    res.json({ sent: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Endpoint para listar grupos/chats de WhatsApp (solo para uso interno)
-app.get('/api/wpp-groups', async (req, res) => {
-  if (!baileysReady) return res.status(503).json({ error: 'WhatsApp no vinculado' });
-  try {
-    const allGroups = await baileysSock.groupFetchAllParticipating();
-    // Mapear nombre e ID
-    const result = Object.values(allGroups).map(g => ({ name: g.subject, id: g.id }));
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Endpoint para consultar el estado de la sesión de WhatsApp
-app.get('/api/wpp-status', (req, res) => {
-  res.json({ ready: !!baileysReady });
-});
-
-// Endpoint para obtener el QR de WhatsApp
-app.get('/api/wpp-qr', (req, res) => {
-  if (baileysQR && !baileysReady) {
-    res.json({ qr: baileysQR });
-  } else if (baileysReady) {
-    res.json({ status: 'ready' });
-  } else {
-    res.status(503).json({ error: 'QR no disponible aún' });
-  }
 });
 
 const PORT = process.env.PORT || 8000;
