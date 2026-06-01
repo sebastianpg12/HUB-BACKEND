@@ -3,6 +3,16 @@
  * con organizationId durante la migración a multi-tenant.
  *
  * Idempotente — si el índice ya no existe, lo ignora.
+ *
+ * Uso seguro:
+ *   # Contra la BD del .env (dev):
+ *   node scripts/dropObsoleteIndexes.js --confirm
+ *
+ *   # Contra otra BD (ej. prod), pasando la URI por env temporal:
+ *   $env:MONGO_URI="mongodb+srv://USER:PASS@cluster/gems-crm"; node scripts/dropObsoleteIndexes.js --confirm
+ *
+ *   # Dry-run: muestra a qué BD se conectaría sin hacer cambios:
+ *   node scripts/dropObsoleteIndexes.js
  */
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
@@ -11,12 +21,36 @@ dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
 require('dotenv').config();
 const mongoose = require('mongoose');
 
+const CONFIRM = process.argv.includes('--confirm');
+
 const OBSOLETE = [
   { collection: 'roles', index: 'name_1' },
   { collection: 'tickets', index: 'ticketNumber_1' }
 ];
 
+function previewTarget(uri) {
+  // No imprimir credenciales. Solo el host + dbName.
+  try {
+    const m = uri.match(/@([^/]+)\/([^?]+)/);
+    if (!m) return '(no se pudo parsear)';
+    return `${m[1]}/${m[2]}`;
+  } catch { return '(no se pudo parsear)'; }
+}
+
 async function run() {
+  if (!process.env.MONGO_URI) {
+    console.error('[Cleanup] MONGO_URI no está definido.');
+    process.exit(1);
+  }
+  console.log(`[Cleanup] Target: ${previewTarget(process.env.MONGO_URI)}`);
+
+  if (!CONFIRM) {
+    console.log('\n[Cleanup] DRY-RUN. Sin --confirm no se ejecuta nada.');
+    console.log('Si la BD destino es correcta, vuelve a correr con --confirm:');
+    console.log('  node scripts/dropObsoleteIndexes.js --confirm\n');
+    process.exit(0);
+  }
+
   await mongoose.connect(process.env.MONGO_URI);
   console.log('[Cleanup] Conectado a MongoDB');
 
