@@ -141,7 +141,7 @@ async function notifyStatusChanged(ticket, oldStatus, newStatus) {
 }
 
 async function notifyNewComment(ticket, comment, author) {
-  const isAuthorAgent = author.role === 'support' || author.role === 'admin';
+  const isAuthorAgent = ['admin', 'supervisor', 'support'].includes(author.role);
 
   // 1. If agent commented, notify CLIENT (only if not internal)
   if (isAuthorAgent && !comment.isInternal && ticket.submittedBy?.email) {

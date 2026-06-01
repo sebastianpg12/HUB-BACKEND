@@ -115,10 +115,10 @@ async function run() {
 
   // ───── Usuarios ─────
   const userDefs = [
-    { name: 'Diana Owner',     email: 'diana.owner@demo.gems.cr',   role: 'admin',    isOwner: true,  position: 'CEO' },
-    { name: 'Mateo Manager',   email: 'mateo.manager@demo.gems.cr', role: 'manager',  isOwner: false, position: 'Country Manager' },
-    { name: 'Carla Comercial', email: 'carla.ventas@demo.gems.cr',  role: 'user',     isOwner: false, position: 'Ejecutiva Comercial' },
-    { name: 'Sergio Soporte',  email: 'sergio.soporte@demo.gems.cr',role: 'support',  isOwner: false, position: 'Agente de Soporte' }
+    { name: 'Diana Owner',     email: 'diana.owner@demo.gems.cr',   role: 'admin',        isOwner: true,  position: 'CEO' },
+    { name: 'Mateo Manager',   email: 'mateo.manager@demo.gems.cr', role: 'supervisor',   isOwner: false, position: 'Country Manager' },
+    { name: 'Carla Comercial', email: 'carla.ventas@demo.gems.cr',  role: 'collaborator', isOwner: false, position: 'Ejecutiva Comercial' },
+    { name: 'Sergio Soporte',  email: 'sergio.soporte@demo.gems.cr',role: 'support',      isOwner: false, position: 'Agente de Soporte' }
   ];
 
   const users = {};
@@ -205,7 +205,7 @@ async function run() {
         status: statuses[i % statuses.length],
         priority: priorities[i % priorities.length],
         clientId: clients[i % clients.length]._id,
-        assignedTo: [users['user']._id, users['manager']._id].slice(0, (i % 2) + 1),
+        assignedTo: [users['collaborator']._id, users['supervisor']._id].slice(0, (i % 2) + 1),
         createdBy: owner._id,
         dueDate: due,
         estimatedTime: ['30 minutos','1 hora','2 horas','4 horas'][i % 4]
@@ -228,7 +228,7 @@ async function run() {
       await Case.create({
         ...c,
         descripcion: `Caso de demostración para "${c.titulo}". Sirve para mostrar el flujo operativo.`,
-        asignado_a: users['manager']._id
+        asignado_a: users['supervisor']._id
       });
       createdCase++;
     }
@@ -270,8 +270,8 @@ async function run() {
       if (exists) continue;
       const conv = await ProspectConversation.create({
         ...p,
-        createdBy: users['user']._id,
-        ownerId:   users['user']._id,
+        createdBy: users['collaborator']._id,
+        ownerId:   users['collaborator']._id,
         messages: [
           { role: 'user',      content: `Diagnóstico inicial de ${p.company}.` },
           { role: 'assistant', content: `Propuesta sugerida para ${p.company}: módulo Clientes + Pipeline + Reportes ejecutivos.` }

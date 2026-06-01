@@ -99,7 +99,7 @@ async function run() {
     await Membership.create({
       user: user._id,
       organization: defaultOrg._id,
-      role: user.role || 'employee',
+      role: user.role || 'collaborator',
       isOwner: isFirstAdmin,
       status: 'active',
       department: user.department || null,

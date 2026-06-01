@@ -20,11 +20,11 @@ const membershipSchema = new mongoose.Schema({
     required: true,
     index: true
   },
-  // Rol textual para compatibilidad con el código existente (admin/manager/user/support/employee).
+  // Rol textual del miembro en la organización (admin/supervisor/collaborator/support/viewer/client).
   role: {
     type: String,
     required: true,
-    default: 'employee'
+    default: 'collaborator'
   },
   // Rol referenciado al modelo Role (opcional, por organización).
   roleRef: {

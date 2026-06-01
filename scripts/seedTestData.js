@@ -35,7 +35,7 @@ async function seed() {
       name: 'María López',
       email: 'maria.lopez@gems.cr',
       password: 'Gems12-',
-      role: 'manager',
+      role: 'supervisor',
       position: 'Gerente Comercial',
       department: 'Ventas',
       isActive: true,

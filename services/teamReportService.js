@@ -415,7 +415,7 @@ async function sendTeamReport({ recipients, period = 'week', department } = {}) 
     if (settings?.value?.recipients?.length > 0) {
       recipients = settings.value.recipients;
     } else {
-      const admins = await User.find({ role: { $in: ['admin', 'manager'] }, isActive: { $ne: false } }).select('email').lean();
+      const admins = await User.find({ role: { $in: ['admin', 'supervisor'] }, isActive: { $ne: false } }).select('email').lean();
       recipients = admins.map(a => a.email).filter(Boolean);
     }
   }

@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema({
     role: {
     type: String,
     required: true,
-    default: 'employee'
+    default: 'collaborator'
   },
   // Rol de plataforma — independiente de Memberships. Si es true, este usuario es
   // super-administrador de GEMS Hub: puede entrar a cualquier organización activa

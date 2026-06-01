@@ -133,7 +133,7 @@ router.post('/', checkTeamPermissions('create'), async (req, res) => {
       name,
       email,
       password: defaultPassword,
-      role: role || 'employee',
+      role: role || 'collaborator',
       department,
       departmentRole: departmentRole || 'member',
       supervisor: (supervisor && supervisor !== '') ? supervisor : null,
@@ -149,7 +149,7 @@ router.post('/', checkTeamPermissions('create'), async (req, res) => {
     await Membership.create({
       user: member._id,
       organization: req.organizationId,
-      role: role || 'employee',
+      role: role || 'collaborator',
       status: 'active',
       department,
       departmentRole: departmentRole || 'member',
