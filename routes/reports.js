@@ -698,4 +698,282 @@ router.put('/schedule-config', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// /overview — endpoint unificado para el dashboard de reportes
+// ═══════════════════════════════════════════════════════════════════════════
+// Devuelve TODO el dataset necesario para las 4 vistas (resumen, operaciones,
+// comercial, equipo) en una sola llamada, con comparación vs período anterior.
+//
+// Query params:
+//   period:     'week' | 'month' | 'quarter' | 'year' | 'custom'  (default: 'month')
+//   from, to:   ISO dates si period='custom'
+//   department: string (opcional)
+//   ownerId:    ObjectId (opcional)
+//   clientId:   ObjectId (opcional)
+// ═══════════════════════════════════════════════════════════════════════════
+const Ticket = require('../models/Ticket');
+const Membership = require('../models/Membership');
+const ProspectConversation = require('../models/ProspectConversation');
+
+router.get('/overview', async (req, res) => {
+  try {
+    const orgId = req.organizationId;
+    const { period = 'month', from, to, department, ownerId, clientId } = req.query;
+
+    // ── Rango actual + anterior (para deltas) ─────────────────────────
+    const now = new Date();
+    let curStart, curEnd, prevStart, prevEnd;
+    if (period === 'custom' && from && to) {
+      curStart = new Date(from); curEnd = new Date(to);
+      const span = curEnd - curStart;
+      prevEnd = new Date(curStart - 1);
+      prevStart = new Date(prevEnd - span);
+    } else if (period === 'week') {
+      curStart = new Date(now); curStart.setDate(now.getDate() - 7); curStart.setHours(0,0,0,0);
+      curEnd = now;
+      prevEnd = new Date(curStart); prevStart = new Date(curStart); prevStart.setDate(curStart.getDate() - 7);
+    } else if (period === 'quarter') {
+      curStart = new Date(now); curStart.setMonth(now.getMonth() - 3);
+      curEnd = now;
+      prevEnd = new Date(curStart); prevStart = new Date(curStart); prevStart.setMonth(curStart.getMonth() - 3);
+    } else if (period === 'year') {
+      curStart = new Date(now); curStart.setFullYear(now.getFullYear() - 1);
+      curEnd = now;
+      prevEnd = new Date(curStart); prevStart = new Date(curStart); prevStart.setFullYear(curStart.getFullYear() - 1);
+    } else { // month
+      curStart = new Date(now); curStart.setMonth(now.getMonth() - 1);
+      curEnd = now;
+      prevEnd = new Date(curStart); prevStart = new Date(curStart); prevStart.setMonth(curStart.getMonth() - 1);
+    }
+
+    // ── Resolver ownerIds si vino department ──────────────────────────
+    let ownerIdsInDept = null;
+    if (department) {
+      const ms = await Membership.find({ organization: orgId, department, status: 'active' }).select('user').lean();
+      ownerIdsInDept = ms.map(m => m.user);
+    }
+
+    const ownerFilter = (field) => {
+      if (ownerId) return { [field]: new mongoose.Types.ObjectId(ownerId) };
+      if (ownerIdsInDept) return { [field]: { $in: ownerIdsInDept } };
+      return {};
+    };
+
+    const baseFilter = { organizationId: orgId };
+    if (clientId) baseFilter.clientId = new mongoose.Types.ObjectId(clientId);
+
+    const inRange = (start, end) => ({ createdAt: { $gte: start, $lte: end } });
+    const pct = (cur, prev) => prev === 0 ? (cur > 0 ? 100 : 0) : Math.round(((cur - prev) / prev) * 1000) / 10;
+
+    // ── ACTIVIDADES ───────────────────────────────────────────────────
+    const actMatch = { ...baseFilter, ...ownerFilter('assignedTo') };
+    const [actCurAgg, actPrevAgg, actByStatus, actOverdue, actByOwner] = await Promise.all([
+      Activity.aggregate([
+        { $match: { ...actMatch, ...inRange(curStart, curEnd) } },
+        { $group: { _id: null, total: { $sum: 1 }, completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } } } }
+      ]),
+      Activity.aggregate([
+        { $match: { ...actMatch, ...inRange(prevStart, prevEnd) } },
+        { $group: { _id: null, total: { $sum: 1 }, completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } } } }
+      ]),
+      Activity.aggregate([
+        { $match: actMatch },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]),
+      Activity.find({ ...actMatch, status: { $nin: ['completed', 'cancelled'] }, dueDate: { $lt: now } })
+        .select('title dueDate priority assignedTo clientId').limit(20)
+        .populate('assignedTo', 'name email')
+        .populate('clientId', 'name')
+        .lean(),
+      Activity.aggregate([
+        { $match: { ...actMatch, ...inRange(curStart, curEnd) } },
+        { $unwind: { path: '$assignedTo', preserveNullAndEmptyArrays: true } },
+        { $group: {
+          _id: '$assignedTo',
+          total: { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+          overdue: { $sum: { $cond: [{ $and: [{ $lt: ['$dueDate', now] }, { $ne: ['$status', 'completed'] }] }, 1, 0] } }
+        } },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+        { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+        { $project: { _id: 1, name: '$user.name', email: '$user.email', total: 1, completed: 1, overdue: 1 } },
+        { $sort: { total: -1 } },
+        { $limit: 15 }
+      ])
+    ]);
+    const actCur = actCurAgg[0] || { total: 0, completed: 0 };
+    const actPrev = actPrevAgg[0] || { total: 0, completed: 0 };
+
+    // ── TICKETS ───────────────────────────────────────────────────────
+    const tkMatch = { ...baseFilter, ...ownerFilter('assignedTo') };
+    const [tkCurAgg, tkPrevAgg, tkByStatus, tkOpen, tkBySla] = await Promise.all([
+      Ticket.aggregate([
+        { $match: { ...tkMatch, ...inRange(curStart, curEnd) } },
+        { $group: { _id: null, total: { $sum: 1 }, resolved: { $sum: { $cond: [{ $eq: ['$status', 'resolved'] }, 1, 0] } } } }
+      ]),
+      Ticket.aggregate([
+        { $match: { ...tkMatch, ...inRange(prevStart, prevEnd) } },
+        { $group: { _id: null, total: { $sum: 1 }, resolved: { $sum: { $cond: [{ $eq: ['$status', 'resolved'] }, 1, 0] } } } }
+      ]),
+      Ticket.aggregate([
+        { $match: tkMatch },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]),
+      Ticket.find({ ...tkMatch, status: { $nin: ['resolved', 'closed'] } })
+        .select('ticketNumber subject priority status submittedBy createdAt assignedTo')
+        .sort({ createdAt: -1 }).limit(15)
+        .populate('assignedTo', 'name email').lean(),
+      Ticket.aggregate([
+        { $match: { ...tkMatch, ...inRange(curStart, curEnd) } },
+        { $project: {
+          isOverdue: { $and: [
+            { $in: ['$status', ['new', 'open']] },
+            { $lt: ['$createdAt', new Date(now - 2 * 60 * 60 * 1000)] }
+          ] }
+        } },
+        { $group: { _id: null, total: { $sum: 1 }, overdue: { $sum: { $cond: ['$isOverdue', 1, 0] } } } }
+      ])
+    ]);
+    const tkCur = tkCurAgg[0] || { total: 0, resolved: 0 };
+    const tkPrev = tkPrevAgg[0] || { total: 0, resolved: 0 };
+    const tkSla = tkBySla[0] || { total: 0, overdue: 0 };
+
+    // ── CASOS ─────────────────────────────────────────────────────────
+    const [casesByStatus, casesOpen] = await Promise.all([
+      Case.aggregate([
+        { $match: baseFilter },
+        { $group: { _id: '$estado', count: { $sum: 1 } } }
+      ]),
+      Case.find({ ...baseFilter, estado: { $in: ['abierto', 'en_progreso'] } })
+        .select('titulo tipo prioridad estado progreso cliente_id createdAt').limit(10)
+        .populate('cliente_id', 'name').lean()
+    ]);
+
+    // ── PROSPECTOS (pipeline) ─────────────────────────────────────────
+    const prospMatch = { ...baseFilter, ...ownerFilter('ownerId') };
+    const [prospByStatus, prospCurAgg, prospPrevAgg] = await Promise.all([
+      ProspectConversation.aggregate([
+        { $match: prospMatch },
+        { $group: { _id: '$status', count: { $sum: 1 }, value: { $sum: '$estimatedValue' } } }
+      ]),
+      ProspectConversation.aggregate([
+        { $match: { ...prospMatch, ...inRange(curStart, curEnd) } },
+        { $group: { _id: null, total: { $sum: 1 }, won: { $sum: { $cond: [{ $eq: ['$status', 'ganado'] }, 1, 0] } }, value: { $sum: '$estimatedValue' } } }
+      ]),
+      ProspectConversation.aggregate([
+        { $match: { ...prospMatch, ...inRange(prevStart, prevEnd) } },
+        { $group: { _id: null, total: { $sum: 1 }, won: { $sum: { $cond: [{ $eq: ['$status', 'ganado'] }, 1, 0] } }, value: { $sum: '$estimatedValue' } } }
+      ])
+    ]);
+    const prospCur = prospCurAgg[0] || { total: 0, won: 0, value: 0 };
+    const prospPrev = prospPrevAgg[0] || { total: 0, won: 0, value: 0 };
+
+    // Forecast ponderado: suma de estimatedValue * probabilidad por status
+    const PROBABILITY = { nuevo: 10, calificado: 30, propuesta: 60, seguimiento: 75, ganado: 100, perdido: 0 };
+    let forecast = 0, pipelineValue = 0;
+    prospByStatus.forEach(s => {
+      pipelineValue += s.value || 0;
+      forecast += (s.value || 0) * (PROBABILITY[s._id] || 0) / 100;
+    });
+
+    // ── CLIENTES ──────────────────────────────────────────────────────
+    const Client = require('../models/Client');
+    const [totalClients, newClientsCur, newClientsPrev, atRiskClients] = await Promise.all([
+      Client.countDocuments(baseFilter),
+      Client.countDocuments({ ...baseFilter, ...inRange(curStart, curEnd) }),
+      Client.countDocuments({ ...baseFilter, ...inRange(prevStart, prevEnd) }),
+      // "At risk" = no actividad en últimos 30 días
+      Client.aggregate([
+        { $match: baseFilter },
+        { $lookup: {
+          from: 'activities',
+          let: { cid: '$_id' },
+          pipeline: [
+            { $match: {
+              $expr: { $and: [
+                { $eq: ['$clientId', '$$cid'] },
+                { $eq: ['$organizationId', orgId] },
+                { $gte: ['$createdAt', new Date(now - 30 * 24 * 60 * 60 * 1000)] }
+              ] }
+            } }
+          ],
+          as: 'recent'
+        } },
+        { $match: { recent: { $size: 0 } } },
+        { $project: { name: 1, email: 1, company: 1, createdAt: 1 } },
+        { $limit: 10 }
+      ])
+    ]);
+
+    // ── EQUIPO (memberships activos) ──────────────────────────────────
+    const teamSize = await Membership.countDocuments({ organization: orgId, status: 'active' });
+
+    // ── Serie temporal: actividades creadas por semana en el rango actual ─
+    const weeklyActivity = await Activity.aggregate([
+      { $match: { ...actMatch, ...inRange(curStart, curEnd) } },
+      { $group: {
+        _id: { $dateTrunc: { date: '$createdAt', unit: 'week' } },
+        created: { $sum: 1 },
+        completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } }
+      } },
+      { $sort: { _id: 1 } }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        meta: { period, from: curStart, to: curEnd, prevFrom: prevStart, prevTo: prevEnd, generatedAt: new Date() },
+
+        executive: {
+          activitiesCompleted: actCur.completed,
+          activitiesDelta:     pct(actCur.completed, actPrev.completed),
+          ticketsResolved:     tkCur.resolved,
+          ticketsDelta:        pct(tkCur.resolved, tkPrev.resolved),
+          prospectsValue:      pipelineValue,
+          forecast,
+          forecastDelta:       pct(prospCur.value, prospPrev.value),
+          newClients:          newClientsCur,
+          clientsDelta:        pct(newClientsCur, newClientsPrev),
+          teamSize,
+          atRiskClientCount:   atRiskClients.length,
+          overdueActivityCount: actOverdue.length,
+          slaBreachCount:       tkSla.overdue
+        },
+
+        operations: {
+          activitiesByStatus: actByStatus.reduce((m, s) => ({ ...m, [s._id || 'unknown']: s.count }), {}),
+          activitiesOverdue:  actOverdue,
+          ticketsByStatus:    tkByStatus.reduce((m, s) => ({ ...m, [s._id]: s.count }), {}),
+          ticketsOpen:        tkOpen,
+          casesByStatus:      casesByStatus.reduce((m, s) => ({ ...m, [s._id]: s.count }), {}),
+          casesOpen,
+          slaBreach: { total: tkSla.total, overdue: tkSla.overdue }
+        },
+
+        commercial: {
+          pipelineByStatus: prospByStatus.map(s => ({ status: s._id, count: s.count, value: s.value || 0 })),
+          pipelineValue,
+          forecast,
+          conversionRate: prospCur.total > 0 ? Math.round((prospCur.won / prospCur.total) * 1000) / 10 : 0,
+          totalProspects: prospCur.total
+        },
+
+        team: {
+          byOwner: actByOwner,
+          totalMembers: teamSize
+        },
+
+        timeseries: {
+          weeklyActivity: weeklyActivity.map(w => ({ week: w._id, created: w.created, completed: w.completed }))
+        },
+
+        atRiskClients
+      }
+    });
+  } catch (error) {
+    console.error('[reports/overview]', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;
