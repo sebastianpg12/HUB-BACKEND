@@ -61,7 +61,13 @@ router.get('/:id', async (req, res) => {
 // Crear un nuevo artículo
 router.post('/', upload.array('archivos', 5), async (req, res) => {
   try {
-    const wikiData = { ...req.body };
+    const wikiData = { 
+      ...req.body, 
+      organizationId: req.organizationId,
+      autor: req.userId || req.body.autor
+    };
+    console.log('[DEBUG WIKI POST] req.organizationId:', req.organizationId);
+    console.log('[DEBUG WIKI POST] wikiData.organizationId:', wikiData.organizationId);
     if (req.files) {
       wikiData.archivos = req.files.map(file => ({
         nombre: file.originalname,
@@ -81,7 +87,10 @@ router.post('/', upload.array('archivos', 5), async (req, res) => {
 // Actualizar un artículo
 router.put('/:id', upload.array('archivos', 5), async (req, res) => {
   try {
-    const updateData = { ...req.body };
+    const updateData = { 
+      ...req.body,
+      organizationId: req.organizationId 
+    };
     const article = await Wiki.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!article) return res.status(404).json({ message: 'Artículo no encontrado' });
 

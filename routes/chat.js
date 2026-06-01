@@ -158,7 +158,8 @@ router.post('/rooms/:roomId/messages', auth, upload.array('files', 5), async (re
       content,
       type,
       attachments,
-      replyTo: replyTo || null
+      replyTo: replyTo || null,
+      organizationId: req.organizationId
     });
 
     await message.save();

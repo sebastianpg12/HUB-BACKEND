@@ -10,9 +10,9 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
   process.exit(1);
 }
 
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
-// Token "pre-auth": emitido tras validar credenciales, antes de elegir org. No da acceso a datos.
-const PRE_AUTH_EXPIRES_IN = '15m';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m'; // Access tokens ahora viven menos por seguridad
+// Token "pre-auth": emitido tras validar credenciales, antes de elegir org.
+const PRE_AUTH_EXPIRES_IN = '10m';
 
 /**
  * Verifica JWT. Si el token incluye organizationId, carga el Membership y la Organization
@@ -199,6 +199,27 @@ const generateToken = (userId, organizationId = null) => {
   });
 };
 
+const crypto = require('crypto');
+const RefreshToken = require('../models/RefreshToken');
+
+const generateRefreshToken = async (userId, organizationId = null, req = null) => {
+  const token = crypto.randomBytes(40).toString('hex');
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
+
+  const rt = new RefreshToken({
+    token,
+    user: userId,
+    organization: organizationId,
+    expiresAt,
+    deviceInfo: req ? req.get('user-agent') : null,
+    ipAddress: req ? (req.ip || req.connection?.remoteAddress) : null
+  });
+
+  await rt.save();
+  return token;
+};
+
 module.exports = {
   authenticateToken,
   requireOrganization,
@@ -206,6 +227,7 @@ module.exports = {
   requireRole,
   requireSuperAdmin,
   generateToken,
+  generateRefreshToken,
   tenantQuery,
   JWT_SECRET
 };

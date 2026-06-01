@@ -33,6 +33,23 @@ const userSchema = new mongoose.Schema({
     default: false,
     index: true
   },
+  // Secret 2FA *confirmado* (solo se setea tras enable-2fa exitoso).
+  twoFactorSecret: {
+    type: String,
+    default: null,
+    select: false
+  },
+  // Secret en proceso de setup: se guarda en setup-2fa pero NO habilita 2FA.
+  // Se promueve a twoFactorSecret cuando el usuario confirma con el código.
+  pendingTwoFactorSecret: {
+    type: String,
+    default: null,
+    select: false
+  },
+  isTwoFactorEnabled: {
+    type: Boolean,
+    default: false
+  },
   avatar: {
     type: String,
     default: null
@@ -66,6 +83,14 @@ const userSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  isVerified: {
+    type: Boolean,
+    default: true
+  },
+  verificationToken: {
+    type: String,
+    default: null
   },
   lastLogin: {
     type: Date,
@@ -152,10 +177,13 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 
 // Removed old hardcoded permissions switch case.
 
-// Remove password from JSON output
+// Remove sensitive fields from JSON output (never enviar al cliente)
 userSchema.methods.toJSON = function() {
   const user = this.toObject();
   delete user.password;
+  delete user.twoFactorSecret;
+  delete user.pendingTwoFactorSecret;
+  delete user.verificationToken;
   // Don't force default avatar here - let frontend handle defaults
   return user;
 };

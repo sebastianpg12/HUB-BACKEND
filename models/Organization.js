@@ -22,8 +22,12 @@ const organizationSchema = new mongoose.Schema({
   },
   plan: {
     type: String,
-    enum: ['free', 'starter', 'pro', 'enterprise'],
+    enum: ['free', 'free_trial', 'starter', 'pro', 'enterprise'],
     default: 'free'
+  },
+  trialExpiresAt: {
+    type: Date,
+    default: null
   },
   // Si se llena, queries de esta org deben enrutar a una conexión Mongo dedicada.
   // Por ahora todas usan la conexión por defecto (shared DB con organizationId scoping).

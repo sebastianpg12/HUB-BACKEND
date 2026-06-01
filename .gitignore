@@ -61,3 +61,6 @@ uploads/
 # Temporary files
 tmp/
 temp/
+
+# Scratch / debug scripts con credenciales — no subir
+scratch/

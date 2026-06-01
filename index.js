@@ -86,6 +86,25 @@ const authLimiter = rateLimit({
   message: { success: false, message: 'Demasiados intentos. Intenta más tarde.' }
 });
 
+// Refresh tokens corren cada ~15min por sesión activa. Con muchas pestañas / múltiples
+// usuarios detrás de NAT, no podemos meterlos en el authLimiter (los lockoutearía).
+const refreshLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Demasiadas renovaciones de sesión.' }
+});
+
+// Self-service onboarding: estricto contra spam de organizaciones.
+const registerOrgLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Demasiados intentos de registro. Intenta en 1 hora.' }
+});
+
 app.use('/api/', generalLimiter);
 
 // Socket.IO CORS: usa la misma allowlist
@@ -154,7 +173,10 @@ const wikiRoutes = require('./routes/wiki');
 const aiRoutes = require('./routes/ai');
 const adminRoutes = require('./routes/admin');
 
-// Usar rutas — rate limit más estricto en /auth para frenar fuerza bruta
+// Usar rutas — rate limits específicos por sub-ruta antes del authLimiter genérico.
+// Orden importa: los limiters específicos se montan ANTES del general para que matcheen primero.
+app.use('/api/auth/refresh', refreshLimiter);
+app.use('/api/auth/register-org', registerOrgLimiter);
 app.use('/api/auth', authLimiter, authRoutes);
 
 // ───── Wall: todas las demás rutas /api/* requieren autenticación + org activa ─────
@@ -164,6 +186,8 @@ const { authenticateToken, requireOrganization } = require('./middleware/auth');
 const publicWhitelist = [
   /^\/api\/tickets\/public\/[^/]+$/, // formulario externo de soporte (con orgSlug)
   /^\/api\/health$/,
+  // Verificación de email — el link llega por correo, no puede pedir token
+  /^\/api\/auth\/verify-email\/[^/]+$/,
 ];
 app.use('/api', (req, res, next) => {
   if (publicWhitelist.some(rx => rx.test(req.originalUrl.split('?')[0]))) return next();

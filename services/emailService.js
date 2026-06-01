@@ -214,10 +214,60 @@ async function notifySLAAlert(ticket) {
   });
 }
 
+async function sendVerificationEmail(user, token, req) {
+  // Use frontend URL for the verification link
+  const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const verifyUrl = `${baseUrl}/verify-email?token=${token}`;
+
+  return await sendMail({
+    to: user.email,
+    subject: 'Activa tu cuenta en GEMS Hub 🚀',
+    html: `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: 'Inter', Arial, sans-serif;">
+        <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+          
+          <div style="background: linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%); padding: 40px 30px; text-align: center;">
+            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">¡Bienvenido a GEMS Hub!</h1>
+            <p style="margin: 10px 0 0; color: #e0e7ff; font-size: 16px; opacity: 0.9;">El centro de comando para tu equipo</p>
+          </div>
+          
+          <div style="padding: 40px 30px; color: #374151;">
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px;">Hola <span style="color: #111827; font-weight: 600;">${user.name}</span>,</p>
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px;">Estamos muy emocionados de tenerte a bordo. Has dado el primer paso para revolucionar la gestión de clientes y proyectos de tu empresa.</p>
+            <p style="font-size: 16px; line-height: 1.6; margin: 0 0 20px;">Para activar tu <strong style="color:#111827;">Free Trial de 14 días</strong> y acceder a todas las funcionalidades premium, por favor confirma tu dirección de correo electrónico.</p>
+            
+            <div style="text-align: center; margin: 40px 0;">
+              <a href="${verifyUrl}" style="display: inline-block; background-color: #4f46e5; color: #ffffff !important; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(79, 70, 229, 0.2);">Verificar mi cuenta</a>
+            </div>
+            
+            <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; border-left: 4px solid #4f46e5;">
+              <p style="margin: 0; font-size: 14px; color: #4b5563;"><strong>¿Qué sigue?</strong><br>Una vez verifiques tu cuenta, podrás configurar tu espacio de trabajo e invitar a tu equipo de inmediato.</p>
+            </div>
+          </div>
+          
+          <div style="background-color: #f8fafc; padding: 24px 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="margin: 0; font-size: 13px; color: #64748b; line-height: 1.5;">Si el botón superior no funciona, copia y pega este enlace en tu navegador:</p>
+            <p style="color: #4f46e5; word-break: break-all; font-size: 13px;">${verifyUrl}</p>
+            <p style="margin-top: 16px; font-size: 13px; color: #64748b;">&copy; ${new Date().getFullYear()} GEMS Hub. Todos los derechos reservados.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `
+  });
+}
+
 module.exports = { 
   sendMail, 
   notifyTicketCreated, 
   notifyStatusChanged,
   notifyNewComment,
-  notifySLAAlert
+  notifySLAAlert,
+  sendVerificationEmail
 };

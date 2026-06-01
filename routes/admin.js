@@ -13,6 +13,20 @@ const User = require('../models/User');
 const { requireSuperAdmin } = require('../middleware/auth');
 const { runWithoutTenant } = require('../services/tenantContext');
 const { ensureDefaultRolesForOrg } = require('../services/initService');
+const SuperAdminAudit = require('../models/SuperAdminAudit');
+
+// Helper de auditoría — fire-and-forget, no rompe la request si falla.
+function audit(req, action, opts = {}) {
+  SuperAdminAudit.create({
+    superAdminId: req.user._id,
+    organizationId: opts.organizationId || null,
+    targetUserId: opts.targetUserId || null,
+    action,
+    metadata: opts.metadata || null,
+    ipAddress: req.ip || req.connection?.remoteAddress,
+    userAgent: req.get('user-agent')
+  }).catch(err => console.error('[admin/audit]', action, err.message));
+}
 
 // Todas las rutas debajo requieren super-admin
 router.use(requireSuperAdmin);
@@ -121,6 +135,11 @@ router.post('/organizations', async (req, res) => {
       return org;
     });
 
+    audit(req, 'org_create', {
+      organizationId: result._id,
+      metadata: { name: result.name, slug: result.slug, plan: result.plan, ownerEmail: ownerEmail || null }
+    });
+
     res.status(201).json({ success: true, data: result });
   } catch (err) {
     console.error('[admin] create org error:', err);
@@ -141,6 +160,8 @@ router.patch('/organizations/:id', async (req, res) => {
       Organization.findByIdAndUpdate(req.params.id, updates, { new: true })
     );
     if (!org) return res.status(404).json({ success: false, message: 'Organización no encontrada' });
+
+    audit(req, 'org_update', { organizationId: org._id, metadata: { changes: updates } });
     res.json({ success: true, data: org });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -154,6 +175,8 @@ router.delete('/organizations/:id', async (req, res) => {
       Organization.findByIdAndUpdate(req.params.id, { status: 'archived' }, { new: true })
     );
     if (!org) return res.status(404).json({ success: false, message: 'Organización no encontrada' });
+
+    audit(req, 'org_archive', { organizationId: org._id, metadata: { name: org.name } });
     res.json({ success: true, data: org, message: 'Organización archivada' });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -196,6 +219,7 @@ router.post('/super-admins/:userId/grant', async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(req.params.userId, { isSuperAdmin: true }, { new: true }).select('-password');
     if (!user) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    audit(req, 'superadmin_grant', { targetUserId: user._id, metadata: { email: user.email, name: user.name } });
     res.json({ success: true, data: user });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
@@ -212,9 +236,47 @@ router.post('/super-admins/:userId/revoke', async (req, res) => {
     }
     const user = await User.findByIdAndUpdate(req.params.userId, { isSuperAdmin: false }, { new: true }).select('-password');
     if (!user) return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    audit(req, 'superadmin_revoke', { targetUserId: user._id, metadata: { email: user.email, name: user.name } });
     res.json({ success: true, data: user });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+// ───── Auditoría ─────
+
+// GET /api/admin/audit-logs  → lista el registro de accesos de super-admins
+router.get('/audit-logs', async (req, res) => {
+  try {
+    const SuperAdminAudit = require('../models/SuperAdminAudit');
+    const { page = 1, limit = 50 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const logs = await runWithoutTenant(() => 
+      SuperAdminAudit.find({})
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate('superAdminId', 'name email')
+        .populate('organizationId', 'name slug')
+        .lean()
+    );
+    
+    const total = await runWithoutTenant(() => SuperAdminAudit.countDocuments());
+    
+    res.json({
+      success: true,
+      data: logs,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (err) {
+    console.error('[admin] audit logs error:', err);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
