@@ -241,261 +241,29 @@ db.once('open', async () => {
   await ensureSupportUser();
   await ensureDefaultRoles();
 
-  // Inicializar el servicio de cron para reportes de tareas
-  const { initTaskReportsCron, initTeamReportsCron } = require('./services/cronService');
+  // Inicializar servicios de cron
+  const { initTaskReportsCron, initTeamReportsCron, initSlaCron } = require('./services/cronService');
   initTaskReportsCron(app);
   initTeamReportsCron(app);
-
-  // ─── SLA Alert System (Every 15 minutes) ───
-  setInterval(async () => {
-    try {
-      const { notifySLAAlert } = require('./services/emailService');
-      const Ticket = require('./models/Ticket');
-      
-      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
-      
-      const overdueTickets = await Ticket.find({
-        status: 'new',
-        slaNotified: { $ne: true },
-        createdAt: { $lt: twoHoursAgo }
-      });
-
-      for (const ticket of overdueTickets) {
-        console.log(`[SLA] Ticket #${ticket.ticketNumber} is overdue! Sending alert.`);
-        await notifySLAAlert(ticket);
-        ticket.slaNotified = true;
-        await ticket.save();
-      }
-    } catch (err) {
-      console.error('[SLA] Error running background check:', err);
-    }
-  }, 15 * 60 * 1000); // 15 mins
+  initSlaCron();
 });
 
-// ───── Socket.IO: autenticación obligatoria ─────
-const jwt = require('jsonwebtoken');
-const SocketUser = require('./models/User');
-const SocketMembership = require('./models/Membership');
-
-io.use(async (socket, next) => {
-  try {
-    const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-    if (!token) return next(new Error('Token requerido'));
-
-    let decoded;
-    try { decoded = jwt.verify(token, process.env.JWT_SECRET); }
-    catch { return next(new Error('Token inválido')); }
-
-    if (!decoded.organizationId) return next(new Error('Organización no seleccionada'));
-
-    const user = await SocketUser.findById(decoded.userId).select('-password');
-    if (!user || !user.isActive) return next(new Error('Usuario inválido'));
-
-    const membership = await SocketMembership.findOne({
-      user: user._id, organization: decoded.organizationId, status: 'active'
-    });
-    if (!membership) return next(new Error('Sin acceso a la organización'));
-
-    socket.userId = String(user._id);
-    socket.userName = user.name;
-    socket.organizationId = String(decoded.organizationId);
-    socket.role = membership.role;
-    next();
-  } catch (err) {
-    console.error('[Socket.IO] Auth error:', err.message);
-    next(new Error('No autenticado'));
-  }
-});
-
-io.on('connection', (socket) => {
-  console.log(`[Socket.IO] User ${socket.userName} connected (org ${socket.organizationId})`);
-
-  if (!io.onlineUsers) io.onlineUsers = new Map(); // userId -> count
-  if (!io.socketToUser) io.socketToUser = new Map(); // socket.id -> userId
-
-  // Auto-join personal room + org room (sin necesidad de evento del cliente)
-  socket.join(`user_${socket.userId}`);
-  socket.join(`org_${socket.organizationId}`);
-
-  io.socketToUser.set(socket.id, socket.userId);
-  const current = io.onlineUsers.get(socket.userId) || 0;
-  io.onlineUsers.set(socket.userId, current + 1);
-  // Presencia scope-d por org (no leak cross-tenant)
-  const onlineInOrg = Array.from(io.sockets.adapter.rooms.get(`org_${socket.organizationId}`) || [])
-    .map(sid => io.socketToUser.get(sid))
-    .filter(Boolean);
-  io.to(`org_${socket.organizationId}`).emit('presence_update', Array.from(new Set(onlineInOrg)));
-
-  // El evento del cliente ignora el userId que envíe — usa el verificado del socket.
-  socket.on('join_user_room', () => {
-    socket.join(`user_${socket.userId}`);
-  });
-
-  // Para unirse a un chat room: verificar que pertenece a la org del socket
-  socket.on('join_room', async (roomId) => {
-    try {
-      const ChatRoom = require('./models/ChatRoom');
-      const { runWithTenant } = require('./services/tenantContext');
-      const room = await runWithTenant(socket.organizationId, () =>
-        ChatRoom.findOne({ _id: roomId })
-      );
-      if (!room) return; // no existe o no pertenece a la org
-      const isParticipant = room.participants.some(p => String(p) === socket.userId);
-      if (!isParticipant) return;
-      socket.join(`room_${roomId}`);
-    } catch (err) {
-      console.error('[Socket.IO] join_room error:', err.message);
-    }
-  });
-
-  socket.on('leave_room', (roomId) => {
-    socket.leave(`room_${roomId}`);
-  });
-
-  socket.on('typing_start', (data) => {
-    if (!data?.roomId) return;
-    socket.to(`room_${data.roomId}`).emit('user_typing', {
-      userId: socket.userId,
-      userName: socket.userName,
-      roomId: data.roomId
-    });
-  });
-
-  socket.on('typing_stop', (data) => {
-    if (!data?.roomId) return;
-    socket.to(`room_${data.roomId}`).emit('user_stop_typing', {
-      userId: socket.userId,
-      roomId: data.roomId
-    });
-  });
-
-  socket.on('disconnect', () => {
-    const userId = io.socketToUser.get(socket.id);
-    if (userId) {
-      const cnt = io.onlineUsers.get(userId) || 0;
-      if (cnt <= 1) io.onlineUsers.delete(userId);
-      else io.onlineUsers.set(userId, cnt - 1);
-      io.socketToUser.delete(socket.id);
-
-      const onlineInOrg = Array.from(io.sockets.adapter.rooms.get(`org_${socket.organizationId}`) || [])
-        .map(sid => io.socketToUser.get(sid))
-        .filter(Boolean);
-      io.to(`org_${socket.organizationId}`).emit('presence_update', Array.from(new Set(onlineInOrg)));
-    }
-  });
-});
+// Socket.IO con autenticación obligatoria + scope por organización (ver socket/index.js)
+require('./socket/index')(io);
 
 // --- INTEGRACIÓN WHATSAPP CON BAILEYS ---
-const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-let baileysSock = null;
-let baileysReady = false;
-let baileysQR = null;
-app.set('baileysSock', null);
-app.set('baileysReady', false);
+const whatsappService = require('./services/whatsappService');
+whatsappService.init(app);
+app.use('/api/whatsapp', require('./routes/whatsapp'));
+// Re-map the old wpp routes for backward compatibility
+app.use('/api', require('./routes/whatsapp')); 
 
-async function startBaileys() {
-  const { state, saveCreds } = await useMultiFileAuthState('baileys_auth');
-  const { version, isLatest } = await fetchLatestBaileysVersion();
-  baileysSock = makeWASocket({
-    version,
-    printQRInTerminal: true,
-    auth: state,
-    syncFullHistory: false,
-    defaultQueryTimeoutMs: 60000,
+// ─── Global Error Handling Middleware ───
+app.use((err, req, res, next) => {
+  console.error('[Global Error]', err.stack || err);
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal Server Error'
   });
-  app.set('baileysSock', baileysSock);
-
-  baileysSock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    if (qr) {
-      baileysQR = qr;
-      console.log('[Baileys] Escanea este QR para vincular WhatsApp:', qr);
-    }
-    if (connection === 'open') {
-      baileysReady = true;
-      app.set('baileysReady', true);
-      console.log('[Baileys] WhatsApp vinculado y listo para enviar mensajes');
-    }
-    if (connection === 'close') {
-      baileysReady = false;
-      app.set('baileysReady', false);
-      console.warn('[Baileys] WhatsApp desconectado:', lastDisconnect?.error?.message);
-      setTimeout(() => startBaileys(), 15000);
-    }
-  });
-
-  baileysSock.ev.on('creds.update', saveCreds);
-}
-
-startBaileys();
-
-// Los endpoints /api/wpp-* ya pasan por el wall de auth (authenticateToken + requireOrganization).
-// Añadimos requireRole('admin') porque la sesión Baileys es global (no per-org) y solo
-// administradores deben poder enviar mensajes o gestionar la vinculación.
-const { requireRole: wppRequireRole } = require('./middleware/auth');
-const wppAdminOnly = wppRequireRole('admin');
-
-app.post('/api/wpp-send', wppAdminOnly, async (req, res) => {
-  if (!baileysReady) return res.status(503).json({ error: 'WhatsApp no vinculado' });
-  const { message, groupName } = req.body;
-  try {
-    // Buscar el grupo por nombre
-    const allGroups = await baileysSock.groupFetchAllParticipating();
-    let groupId = null;
-    if (groupName) {
-      for (const id in allGroups) {
-        const group = allGroups[id];
-        if (group.subject && group.subject.toLowerCase().includes(groupName.toLowerCase())) {
-          groupId = group.id;
-          break;
-        }
-      }
-    }
-    // Si no se especifica, buscar el grupo 'notificaciones'
-    if (!groupId) {
-      for (const id in allGroups) {
-        const group = allGroups[id];
-        if (group.subject && group.subject.toLowerCase().includes('notificaciones')) {
-          groupId = group.id;
-          break;
-        }
-      }
-    }
-    if (!groupId) return res.status(404).json({ error: 'No se encontró el grupo "notificaciones" vinculado' });
-    await baileysSock.sendMessage(groupId, { text: message });
-    res.json({ sent: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Endpoint para listar grupos/chats de WhatsApp (solo admin)
-app.get('/api/wpp-groups', wppAdminOnly, async (req, res) => {
-  if (!baileysReady) return res.status(503).json({ error: 'WhatsApp no vinculado' });
-  try {
-    const allGroups = await baileysSock.groupFetchAllParticipating();
-    // Mapear nombre e ID
-    const result = Object.values(allGroups).map(g => ({ name: g.subject, id: g.id }));
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Endpoint para consultar el estado de la sesión de WhatsApp (solo admin)
-app.get('/api/wpp-status', wppAdminOnly, (req, res) => {
-  res.json({ ready: !!baileysReady });
-});
-
-// Endpoint para obtener el QR de WhatsApp (solo admin)
-app.get('/api/wpp-qr', wppAdminOnly, (req, res) => {
-  if (baileysQR && !baileysReady) {
-    res.json({ qr: baileysQR });
-  } else if (baileysReady) {
-    res.json({ status: 'ready' });
-  } else {
-    res.status(503).json({ error: 'QR no disponible aún' });
-  }
 });
 
 const PORT = process.env.PORT || 8000;

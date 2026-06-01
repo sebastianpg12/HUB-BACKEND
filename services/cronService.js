@@ -201,4 +201,38 @@ function initTeamReportsCron(app) {
   console.log('✅ Cron para reportes de equipo inicializado');
 }
 
-module.exports = { initTaskReportsCron, initTeamReportsCron };
+// ═══════════════════════════════════════════════════════════════════════════
+// SLA Alert System Cron
+// ═══════════════════════════════════════════════════════════════════════════
+function initSlaCron() {
+  console.log('🔄 Inicializando cron para SLA Alerts...');
+  
+  // Ejecutar cada 15 minutos ('*/15 * * * *')
+  cron.schedule('*/15 * * * *', async () => {
+    try {
+      const { notifySLAAlert } = require('../services/emailService');
+      const Ticket = require('../models/Ticket');
+      
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      
+      const overdueTickets = await Ticket.find({
+        status: 'new',
+        slaNotified: { $ne: true },
+        createdAt: { $lt: twoHoursAgo }
+      });
+
+      for (const ticket of overdueTickets) {
+        console.log(`[SLA] Ticket #${ticket.ticketNumber} is overdue! Sending alert.`);
+        await notifySLAAlert(ticket);
+        ticket.slaNotified = true;
+        await ticket.save();
+      }
+    } catch (err) {
+      console.error('[SLA] Error running background check:', err);
+    }
+  });
+  
+  console.log('✅ Cron para SLA Alerts inicializado');
+}
+
+module.exports = { initTaskReportsCron, initTeamReportsCron, initSlaCron };
