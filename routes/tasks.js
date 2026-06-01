@@ -205,7 +205,9 @@ router.post('/', async (req, res) => {
     });
 
     // Notificación por email a los asignados (sin await para no bloquear la respuesta)
-    if (task.assignedTo?.length) {
+    const assignees = Array.isArray(task.assignedTo) ? task.assignedTo.filter(Boolean) : [];
+    console.log('[Task] Creada:', task.title, '| assignedTo count:', assignees.length, '| createdBy:', task.createdBy?.email);
+    if (assignees.length) {
       notifyTaskAssigned(task, task.createdBy).catch(err =>
         console.error('[Email] notifyTaskAssigned error:', err.message)
       );
