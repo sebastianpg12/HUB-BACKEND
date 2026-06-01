@@ -304,12 +304,22 @@ function taskAssignedHtml(task, assignee, creator) {
 
 async function notifyTaskAssigned(task, creator) {
   const assignees = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo];
-  const creatorId = (creator._id || creator.id || '').toString();
+  const creatorId = (creator?._id || creator?.id || '').toString();
+
+  console.log('[Email] notifyTaskAssigned | assignees:', assignees.length, '| creatorId:', creatorId);
 
   for (const assignee of assignees) {
-    if (!assignee?.email) continue;
-    const assigneeId = (assignee._id || assignee.id || '').toString();
-    if (assigneeId === creatorId) continue; // no notificar al creador si se autoasignó
+    const assigneeId = (assignee?._id || assignee?.id || '').toString();
+    console.log('[Email] Checking assignee:', assigneeId, '| email:', assignee?.email || 'MISSING');
+
+    if (!assignee?.email) {
+      console.warn('[Email] Skipping assignee (no email):', assigneeId);
+      continue;
+    }
+    if (assigneeId === creatorId) {
+      console.log('[Email] Skipping creator self-assignment:', assignee.email);
+      continue;
+    }
 
     await sendMail({
       to: assignee.email,
