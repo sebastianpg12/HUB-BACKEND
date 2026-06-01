@@ -713,7 +713,6 @@ router.put('/schedule-config', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 const Ticket = require('../models/Ticket');
 const Membership = require('../models/Membership');
-const ProspectConversation = require('../models/ProspectConversation');
 
 router.get('/overview', async (req, res) => {
   try {
@@ -849,32 +848,30 @@ router.get('/overview', async (req, res) => {
         .populate('cliente_id', 'name').lean()
     ]);
 
-    // ── PROSPECTOS (pipeline) ─────────────────────────────────────────
-    const prospMatch = { ...baseFilter, ...ownerFilter('ownerId') };
-    const [prospByStatus, prospCurAgg, prospPrevAgg] = await Promise.all([
-      ProspectConversation.aggregate([
-        { $match: prospMatch },
-        { $group: { _id: '$status', count: { $sum: 1 }, value: { $sum: '$estimatedValue' } } }
+    // Prospectos IA: módulo en construcción — no se incluye en reportes operativos.
+
+    // ── CASOS (deltas) ────────────────────────────────────────────────
+    const [casesCurAgg, casesPrevAgg, avgResolutionTime] = await Promise.all([
+      Case.aggregate([
+        { $match: { ...baseFilter, ...inRange(curStart, curEnd) } },
+        { $group: { _id: null, total: { $sum: 1 }, closed: { $sum: { $cond: [{ $in: ['$estado', ['resuelto', 'cerrado']] }, 1, 0] } } } }
       ]),
-      ProspectConversation.aggregate([
-        { $match: { ...prospMatch, ...inRange(curStart, curEnd) } },
-        { $group: { _id: null, total: { $sum: 1 }, won: { $sum: { $cond: [{ $eq: ['$status', 'ganado'] }, 1, 0] } }, value: { $sum: '$estimatedValue' } } }
+      Case.aggregate([
+        { $match: { ...baseFilter, ...inRange(prevStart, prevEnd) } },
+        { $group: { _id: null, total: { $sum: 1 }, closed: { $sum: { $cond: [{ $in: ['$estado', ['resuelto', 'cerrado']] }, 1, 0] } } } }
       ]),
-      ProspectConversation.aggregate([
-        { $match: { ...prospMatch, ...inRange(prevStart, prevEnd) } },
-        { $group: { _id: null, total: { $sum: 1 }, won: { $sum: { $cond: [{ $eq: ['$status', 'ganado'] }, 1, 0] } }, value: { $sum: '$estimatedValue' } } }
+      // Tiempo promedio de resolución de tickets (ms → horas)
+      Ticket.aggregate([
+        { $match: { ...tkMatch, status: 'resolved', resolvedAt: { $exists: true, $gte: curStart, $lte: curEnd } } },
+        { $project: { diffMs: { $subtract: ['$resolvedAt', '$createdAt'] } } },
+        { $group: { _id: null, avgMs: { $avg: '$diffMs' }, count: { $sum: 1 } } }
       ])
     ]);
-    const prospCur = prospCurAgg[0] || { total: 0, won: 0, value: 0 };
-    const prospPrev = prospPrevAgg[0] || { total: 0, won: 0, value: 0 };
-
-    // Forecast ponderado: suma de estimatedValue * probabilidad por status
-    const PROBABILITY = { nuevo: 10, calificado: 30, propuesta: 60, seguimiento: 75, ganado: 100, perdido: 0 };
-    let forecast = 0, pipelineValue = 0;
-    prospByStatus.forEach(s => {
-      pipelineValue += s.value || 0;
-      forecast += (s.value || 0) * (PROBABILITY[s._id] || 0) / 100;
-    });
+    const casesCur = casesCurAgg[0] || { total: 0, closed: 0 };
+    const casesPrev = casesPrevAgg[0] || { total: 0, closed: 0 };
+    const avgTicketHrs = avgResolutionTime[0]?.avgMs
+      ? Math.round((avgResolutionTime[0].avgMs / 3_600_000) * 10) / 10
+      : 0;
 
     // ── CLIENTES ──────────────────────────────────────────────────────
     const Client = require('../models/Client');
@@ -927,13 +924,16 @@ router.get('/overview', async (req, res) => {
         executive: {
           activitiesCompleted: actCur.completed,
           activitiesDelta:     pct(actCur.completed, actPrev.completed),
+          activitiesTotal:     actCur.total,
+          completionRate:      actCur.total > 0 ? Math.round((actCur.completed / actCur.total) * 1000) / 10 : 0,
           ticketsResolved:     tkCur.resolved,
           ticketsDelta:        pct(tkCur.resolved, tkPrev.resolved),
-          prospectsValue:      pipelineValue,
-          forecast,
-          forecastDelta:       pct(prospCur.value, prospPrev.value),
+          avgTicketHrs,
+          casesClosed:         casesCur.closed,
+          casesDelta:          pct(casesCur.closed, casesPrev.closed),
           newClients:          newClientsCur,
           clientsDelta:        pct(newClientsCur, newClientsPrev),
+          totalClients,
           teamSize,
           atRiskClientCount:   atRiskClients.length,
           overdueActivityCount: actOverdue.length,
@@ -947,15 +947,8 @@ router.get('/overview', async (req, res) => {
           ticketsOpen:        tkOpen,
           casesByStatus:      casesByStatus.reduce((m, s) => ({ ...m, [s._id]: s.count }), {}),
           casesOpen,
-          slaBreach: { total: tkSla.total, overdue: tkSla.overdue }
-        },
-
-        commercial: {
-          pipelineByStatus: prospByStatus.map(s => ({ status: s._id, count: s.count, value: s.value || 0 })),
-          pipelineValue,
-          forecast,
-          conversionRate: prospCur.total > 0 ? Math.round((prospCur.won / prospCur.total) * 1000) / 10 : 0,
-          totalProspects: prospCur.total
+          slaBreach: { total: tkSla.total, overdue: tkSla.overdue },
+          avgTicketResolutionHrs: avgTicketHrs
         },
 
         team: {
