@@ -1,7 +1,7 @@
 const Activity = require('../models/Activity');
 const User = require('../models/User');
 
-// Helpers para formatear texto en WhatsApp
+// Helpers para formatear texto del reporte.
 const getPriorityText = (priority) => {
   const priorities = {
     'low': '🟢 Baja',
@@ -22,27 +22,6 @@ const getStatusText = (status) => {
   };
   return statuses[status] || '⏳ Pendiente';
 };
-
-// Obtener grupo de WhatsApp para notificaciones
-async function getNotificationGroupId(baileysSock) {
-  if (!baileysSock) return null;
-  
-  try {
-    const allGroups = await baileysSock.groupFetchAllParticipating();
-    
-    for (const id in allGroups) {
-      const group = allGroups[id];
-      if (group.subject && group.subject.toLowerCase().includes('notificaciones')) {
-        return group.id;
-      }
-    }
-    
-    return null;
-  } catch (error) {
-    console.error('Error al buscar grupo de notificaciones:', error);
-    return null;
-  }
-}
 
 // Generar resumen diario de tareas creadas
 async function generateDailyTaskSummary() {
@@ -278,41 +257,12 @@ async function generateTaskReport(taskIds) {
   }
 }
 
-// Función para enviar mensaje a WhatsApp
-async function sendWhatsAppMessage(baileysSock, message, mentionedJids = []) {
-  try {
-    if (!baileysSock) {
-      throw new Error('No hay una conexión disponible de WhatsApp');
-    }
-    
-    const groupId = await getNotificationGroupId(baileysSock);
-    
-    if (!groupId) {
-      throw new Error('No se encontró el grupo de notificaciones');
-    }
-    
-    await baileysSock.sendMessage(groupId, { 
-      text: message, 
-      mentions: mentionedJids
-    });
-    
-    return {
-      success: true,
-      groupId
-    };
-  } catch (error) {
-    console.error('Error enviando mensaje WhatsApp:', error);
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}
+// La integración con WhatsApp fue eliminada. Los generadores de mensaje se
+// mantienen disponibles (siguen siendo útiles para email o exports), pero ya no
+// existe `sendWhatsAppMessage` ni `getNotificationGroupId`.
 
 module.exports = {
   generateDailyTaskSummary,
   generateTaskDueReminder,
-  generateTaskReport,
-  sendWhatsAppMessage,
-  getNotificationGroupId
+  generateTaskReport
 };

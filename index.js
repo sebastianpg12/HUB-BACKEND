@@ -251,13 +251,6 @@ db.once('open', async () => {
 // Socket.IO con autenticación obligatoria + scope por organización (ver socket/index.js)
 require('./socket/index')(io);
 
-// --- INTEGRACIÓN WHATSAPP CON BAILEYS ---
-const whatsappService = require('./services/whatsappService');
-whatsappService.init(app);
-app.use('/api/whatsapp', require('./routes/whatsapp'));
-// Re-map the old wpp routes for backward compatibility
-app.use('/api', require('./routes/whatsapp')); 
-
 // ─── Global Error Handling Middleware ───
 app.use((err, req, res, next) => {
   console.error('[Global Error]', err.stack || err);

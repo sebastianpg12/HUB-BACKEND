@@ -27,7 +27,6 @@ const TimelineEntrySchema = new mongoose.Schema({
       'created',
       'status',
       'outreach_email',
-      'outreach_whatsapp',
       'outreach_call',
       'note',
       'task_created',
@@ -63,7 +62,7 @@ const ProspectConversationSchema = new mongoose.Schema({
   estimatedValue: { type: Number, default: 0 },
   source: {
     type: String,
-    enum: ['web', 'whatsapp', 'referido', 'linkedin', 'evento', 'cold', 'otro'],
+    enum: ['web', 'referido', 'linkedin', 'evento', 'cold', 'otro'],
     default: undefined
   },
 

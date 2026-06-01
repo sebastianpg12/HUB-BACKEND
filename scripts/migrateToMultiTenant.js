@@ -38,8 +38,7 @@ const TENANT_MODELS = [
   'Activity', 'Board', 'Case', 'ChatRoom', 'Client', 'Doc',
   'FixedExpense', 'Followup', 'Issue', 'Message', 'Minute',
   'Notification', 'Payment', 'ProspectConversation', 'Role',
-  'Setting', 'Task', 'Team', 'Ticket', 'Transaction', 'Wiki',
-  'WppSession', 'WppStatus'
+  'Setting', 'Task', 'Team', 'Ticket', 'Transaction', 'Wiki'
 ];
 
 async function run() {

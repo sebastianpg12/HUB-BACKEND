@@ -4,9 +4,8 @@ const Activity = require('../models/Activity');
 const Setting = require('../models/Setting');
 const { 
   generateDailyTaskSummary, 
-  generateTaskDueReminder, 
-  generateTaskReport, 
-  sendWhatsAppMessage 
+  generateTaskDueReminder,
+  generateTaskReport
 } = require('../services/taskReportService');
 
 // Endpoint para obtener la configuración actual de los reportes
@@ -175,99 +174,13 @@ router.put('/settings', async (req, res) => {
   }
 });
 
-// Endpoint para enviar manualmente un resumen diario
-router.post('/send-daily-summary', async (req, res) => {
-  try {
-    const baileysSock = req.app.get('baileysSock');
-    const baileysReady = req.app.get('baileysReady');
-    
-    if (!baileysSock || !baileysReady) {
-      return res.status(503).json({ error: 'WhatsApp no está conectado' });
-    }
-    
-    const message = await generateDailyTaskSummary();
-    
-    const result = await sendWhatsAppMessage(baileysSock, message);
-    
-    if (!result.success) {
-      return res.status(500).json({ error: result.error });
-    }
-    
-    // Actualizar la última ejecución
-    let settings = await Setting.findOne({ key: 'taskReports' });
-    if (settings) {
-      settings.value.lastDailyRun = new Date();
-      await settings.save();
-    }
-    
-    res.json({ success: true, message: 'Resumen diario enviado correctamente' });
-  } catch (error) {
-    console.error('Error al enviar resumen diario:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Endpoint para enviar manualmente recordatorio de vencimiento
-router.post('/send-due-tomorrow', async (req, res) => {
-  try {
-    const baileysSock = req.app.get('baileysSock');
-    const baileysReady = req.app.get('baileysReady');
-    
-    if (!baileysSock || !baileysReady) {
-      return res.status(503).json({ error: 'WhatsApp no está conectado' });
-    }
-    
-    const { message, mentionedJids } = await generateTaskDueReminder();
-    
-    const result = await sendWhatsAppMessage(baileysSock, message, mentionedJids);
-    
-    if (!result.success) {
-      return res.status(500).json({ error: result.error });
-    }
-    
-    // Actualizar la última ejecución
-    let settings = await Setting.findOne({ key: 'taskReports' });
-    if (settings) {
-      settings.value.lastDueTomorrowRun = new Date();
-      await settings.save();
-    }
-    
-    res.json({ success: true, message: 'Recordatorio de vencimiento enviado correctamente' });
-  } catch (error) {
-    console.error('Error al enviar recordatorio de vencimiento:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Endpoint para enviar un reporte personalizado de tareas
-router.post('/send-custom-report', async (req, res) => {
-  try {
-    const { taskIds } = req.body;
-    
-    if (!Array.isArray(taskIds) || taskIds.length === 0) {
-      return res.status(400).json({ error: 'No se proporcionaron IDs de tareas' });
-    }
-    
-    const baileysSock = req.app.get('baileysSock');
-    const baileysReady = req.app.get('baileysReady');
-    
-    if (!baileysSock || !baileysReady) {
-      return res.status(503).json({ error: 'WhatsApp no está conectado' });
-    }
-    
-    const { message, mentionedJids } = await generateTaskReport(taskIds);
-    
-    const result = await sendWhatsAppMessage(baileysSock, message, mentionedJids);
-    
-    if (!result.success) {
-      return res.status(500).json({ error: result.error });
-    }
-    
-    res.json({ success: true, message: 'Reporte personalizado enviado correctamente' });
-  } catch (error) {
-    console.error('Error al enviar reporte personalizado:', error);
-    res.status(500).json({ error: error.message });
-  }
+// Los endpoints de envío manual usaban WhatsApp (Baileys). Eliminada la integración.
+// Devolvemos 410 Gone para que clientes que aún los llamen se enteren con claridad.
+router.post(['/send-daily-summary', '/send-due-tomorrow', '/send-custom-report'], (req, res) => {
+  res.status(410).json({
+    error: 'Endpoint deprecado: la integración con WhatsApp fue eliminada. ' +
+           'Usa el reporte por email desde /settings/team-report o reimplementa esta vía.'
+  });
 });
 
 module.exports = router;

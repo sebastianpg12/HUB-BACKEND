@@ -111,17 +111,7 @@ async function runQA() {
       console.log('⚠️ Saltando test de tickets por fallo en clientes.');
     }
 
-    // 5. Probar estado de WhatsApp
-    console.log('\n--- 🧪 TEST: Módulo de WhatsApp (Integración Baileys) ---');
-    const wppRes = await fetch(`${API_URL}/whatsapp/status`);
-    if (wppRes.ok) {
-      const wppData = await wppRes.json();
-      console.log(`✅ WhatsApp Endpoint vivo. Estado actual: ${wppData.ready ? 'Vinculado' : 'No Vinculado'}`);
-      passed++;
-    } else {
-      console.error('❌ Falló consultar estado de WhatsApp:', await wppRes.text());
-      failed++;
-    }
+    // 5. (Eliminado: el módulo de WhatsApp ya no existe)
 
   } catch (err) {
     console.error('❌ Error general durante la auditoría:', err);

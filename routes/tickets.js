@@ -100,29 +100,6 @@ router.post('/public/:orgSlug', upload.array('files', 5), async (req, res) => {
       notifyTicketCreated(populated || ticket, assignedAgent)
         .catch(e => console.error('[Email] notifyTicketCreated:', e.message));
 
-      // WhatsApp opcional, mismo flujo
-      try {
-        const baileysSock = req.app.get('baileysSock');
-        const baileysReady = req.app.get('baileysReady');
-        if (baileysSock && baileysReady) {
-          const allGroups = await baileysSock.groupFetchAllParticipating();
-          let groupId = null;
-          for (const id in allGroups) {
-            if (allGroups[id].subject?.toLowerCase().includes('notificaciones')) { groupId = id; break; }
-          }
-          if (groupId) {
-            let msg = `*🎫 NUEVO TICKET (${org.name})*\n\n`;
-            msg += `*Número:* ${ticket.ticketNumber}\n*Asunto:* ${ticket.subject}\n`;
-            msg += `*Cliente:* ${ticket.submittedBy.name} (${ticket.submittedBy.email})\n`;
-            msg += `*Prioridad:* ${getPriorityText(ticket.priority)}\n\n`;
-            msg += assignedAgent ? `👤 *Asignado a:* ${assignedAgent.name}` : `⚠️ *Sin asignar*`;
-            await baileysSock.sendMessage(groupId, { text: msg });
-          }
-        }
-      } catch (wppErr) {
-        console.error('Error WhatsApp ticket público:', wppErr.message);
-      }
-
       res.status(201).json({
         success: true,
         data: populated || ticket,
