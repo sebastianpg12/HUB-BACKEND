@@ -7,6 +7,7 @@ const Task = require('../models/Task');
 const Board = require('../models/Board');
 const { authenticateToken } = require('../middleware/auth');
 const { notifyMentions, notifyAssignment, notifyComment } = require('../services/notificationHelpers');
+const { notifyTaskAssigned } = require('../services/emailService');
 
 // Configuración de multer para imágenes de comentarios en tareas
 const taskCommentsUploadDir = path.join(__dirname, '..', 'uploads', 'task-comments');
@@ -194,7 +195,7 @@ router.post('/', async (req, res) => {
     await task.populate('assignedTo', 'name email photo role');
     await task.populate('createdBy', 'name email photo');
 
-    // Notificación: asignación al crear tarea
+    // Notificación in-app: asignación al crear tarea
     notifyAssignment({
       assignedTo: task.assignedTo?._id || task.assignedTo,
       entityType: 'task',
@@ -202,6 +203,13 @@ router.post('/', async (req, res) => {
       entityTitle: task.title,
       fromUserId: userId
     });
+
+    // Notificación por email a los asignados (sin await para no bloquear la respuesta)
+    if (task.assignedTo?.length) {
+      notifyTaskAssigned(task, task.createdBy).catch(err =>
+        console.error('[Email] notifyTaskAssigned error:', err.message)
+      );
+    }
 
     res.status(201).json(task);
   } catch (error) {

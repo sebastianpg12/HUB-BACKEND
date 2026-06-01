@@ -263,11 +263,68 @@ async function sendVerificationEmail(user, token, req) {
   });
 }
 
-module.exports = { 
-  sendMail, 
-  notifyTicketCreated, 
+// ─── Task notifications ───────────────────────────────────────────────────────
+
+function taskAssignedHtml(task, assignee, creator) {
+  const priorityColors = { critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#6b7280' };
+  const priorityColor = priorityColors[task.priority] || '#6b7280';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://hub.gemsinnovations.com';
+  const taskUrl = `${frontendUrl}/tasks`;
+  const dueDateStr = task.dueDate
+    ? new Date(task.dueDate).toLocaleDateString('es-CR', { dateStyle: 'long' })
+    : null;
+
+  return `
+  <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:auto;background:#f9fafc;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08)">
+    <div style="background:linear-gradient(135deg,#1e1b4b 0%,#4338ca 100%);padding:32px 40px;text-align:center">
+      <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700">GEMS Hub</h1>
+      <p style="color:#c7d2fe;margin:8px 0 0;font-size:14px">Se te ha asignado una tarea</p>
+    </div>
+    <div style="padding:32px 40px;background:#fff">
+      <p style="font-size:16px;color:#1e293b;margin:0 0 8px">Hola <strong>${assignee.name}</strong>,</p>
+      <p style="color:#475569;margin:0 0 24px"><strong>${creator.name}</strong> te ha asignado la siguiente tarea:</p>
+      <div style="background:#f8fafc;border-left:4px solid #8b5cf6;border-radius:8px;padding:20px;margin-bottom:24px">
+        <p style="margin:0 0 12px;font-size:18px;font-weight:700;color:#0f172a">${task.title}</p>
+        ${task.description ? `<p style="margin:0 0 14px;font-size:14px;color:#475569;line-height:1.6">${task.description}</p>` : ''}
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+          <span style="background:${priorityColor}1a;color:${priorityColor};border:1px solid ${priorityColor}40;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600;text-transform:uppercase">${task.priority || 'media'}</span>
+          ${task.type ? `<span style="background:#8b5cf61a;color:#7c3aed;border:1px solid #8b5cf640;border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600">${task.type}</span>` : ''}
+        </div>
+      </div>
+      ${dueDateStr ? `<p style="color:#64748b;font-size:14px;margin:0 0 20px">Fecha límite: <strong style="color:#0f172a">${dueDateStr}</strong></p>` : ''}
+      <div style="text-align:center;margin:28px 0 8px">
+        <a href="${taskUrl}" style="display:inline-block;background:#8b5cf6;color:#fff;text-decoration:none;padding:13px 32px;border-radius:8px;font-weight:600;font-size:15px">Ver tarea en GEMS Hub</a>
+      </div>
+    </div>
+    <div style="background:#f1f5f9;padding:18px 40px;text-align:center;border-top:1px solid #e2e8f0">
+      <p style="color:#94a3b8;font-size:12px;margin:0">&copy; ${new Date().getFullYear()} GEMS Innovations · GEMS Hub</p>
+    </div>
+  </div>`;
+}
+
+async function notifyTaskAssigned(task, creator) {
+  const assignees = Array.isArray(task.assignedTo) ? task.assignedTo : [task.assignedTo];
+  const creatorId = (creator._id || creator.id || '').toString();
+
+  for (const assignee of assignees) {
+    if (!assignee?.email) continue;
+    const assigneeId = (assignee._id || assignee.id || '').toString();
+    if (assigneeId === creatorId) continue; // no notificar al creador si se autoasignó
+
+    await sendMail({
+      to: assignee.email,
+      subject: `[GEMS Hub] Tarea asignada: ${task.title}`,
+      html: taskAssignedHtml(task, assignee, creator),
+    });
+  }
+}
+
+module.exports = {
+  sendMail,
+  notifyTicketCreated,
   notifyStatusChanged,
   notifyNewComment,
   notifySLAAlert,
-  sendVerificationEmail
+  sendVerificationEmail,
+  notifyTaskAssigned,
 };
