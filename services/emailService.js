@@ -1,69 +1,30 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-// ─── Transporter ─────────────────────────────────────────────────────────────
-let transporter = null;
-
-function getTransporter() {
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587', 10),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-    });
-  }
-  return transporter;
-}
-
-// ─── Core helper ─────────────────────────────────────────────────────────────
+// ─── Core helper (Resend HTTP API — funciona desde cualquier cloud) ───────────
 async function sendMail({ to, subject, html, text }) {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const apiKey = process.env.RESEND_API_KEY || process.env.SMTP_PASS;
 
-  if (!host || !user || !pass) {
-    console.warn('[Email] Skipping: Missing config:', {
-      host: host ? 'OK' : 'MISSING',
-      user: user ? 'OK' : 'MISSING',
-      pass: pass ? 'OK' : 'MISSING'
-    });
+  if (!apiKey) {
+    console.warn('[Email] Skipping: RESEND_API_KEY no configurada');
     return null;
   }
 
   console.log('[Email] Attempting sendMail to:', to);
 
-  // Crear transporter fresco por envío para evitar conexiones colgadas
-  const t = nodemailer.createTransport({
-    host,
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: { user, pass },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-  });
+  const resend = new Resend(apiKey);
+  const from = process.env.EMAIL_FROM || 'GEMS Hub <info@gemsinnovations.com>';
 
   try {
-    const info = await t.sendMail({
-      from: process.env.EMAIL_FROM || `"GEMS Hub" <${user}>`,
-      to,
-      subject,
-      html,
-      text,
-    });
-    console.log('[Email] Sent to', to, '| messageId:', info.messageId);
-    return info;
+    const { data, error } = await resend.emails.send({ from, to, subject, html, text });
+    if (error) {
+      console.error('[Email] Error sending to', to, '–', error.message);
+      return null;
+    }
+    console.log('[Email] Sent to', to, '| id:', data.id);
+    return data;
   } catch (err) {
-    console.error('[Email] Error sending to', to, '–', err.message, err.code || '');
+    console.error('[Email] Error sending to', to, '–', err.message);
     return null;
-  } finally {
-    t.close();
   }
 }
 

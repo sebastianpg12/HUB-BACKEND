@@ -24,6 +24,7 @@
     "puppeteer": "^24.22.2",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
+    "resend": "^6.12.4",
     "socket.io": "^4.8.1",
     "speakeasy": "^2.0.0",
     "uuid": "^14.0.0"
