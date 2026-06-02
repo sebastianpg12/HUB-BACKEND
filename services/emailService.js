@@ -38,9 +38,12 @@ async function sendMail({ to, subject, html, text }) {
 
   console.log('[Email] Attempting sendMail to:', to);
 
+  // Brevo expone su cert bajo smtp-relay.sendinblue.com — usamos ese host siempre
+  const resolvedHost = host.includes('brevo.com') ? 'smtp-relay.sendinblue.com' : host;
+
   // Crear transporter fresco por envío para evitar conexiones colgadas
   const t = nodemailer.createTransport({
-    host,
+    host: resolvedHost,
     port: parseInt(process.env.SMTP_PORT || '587', 10),
     secure: process.env.SMTP_SECURE === 'true',
     auth: { user, pass },
