@@ -9,7 +9,8 @@ router.use(authenticateToken);
 // Obtener todos los roles
 router.get('/', async (req, res) => {
   try {
-    const roles = await Role.find({ isSystem: true }).sort({ name: 1 });
+    const SYSTEM_ROLES = ['Administrador', 'Supervisor', 'Colaborador', 'Soporte', 'Consultor', 'Cliente'];
+    const roles = await Role.find({ name: { $in: SYSTEM_ROLES } }).sort({ name: 1 });
     res.json({ success: true, data: roles });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error al obtener roles', error: error.message });
