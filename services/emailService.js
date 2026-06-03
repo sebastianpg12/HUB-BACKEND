@@ -1,4 +1,4 @@
-const { Resend } = require('resend');
+﻿const { Resend } = require('resend');
 const User = require('../models/User');
 
 // ─── Core helper ──────────────────────────────────────────────────────────────
@@ -29,42 +29,41 @@ function normalize(s) {
 const getFrontendUrl = () => process.env.FRONTEND_URL || 'https://hub.gemsinnovations.com';
 const YEAR = new Date().getFullYear();
 
-// ─── Dark design tokens ───────────────────────────────────────────────────────
-// Outer bg, card, elements, borders, accent, text hierarchy
+// ─── Neutral light design tokens ─────────────────────────────────────────────
 const D = {
-  outer:   '#07080f',
-  card:    '#0d0f1a',
-  el:      '#131520',
-  el2:     '#191c2b',
-  border:  '#1e2236',
-  border2: '#252840',
-  accent:  '#7c3aed',
-  acBg:    'rgba(124,58,237,.14)',
-  acBorder:'rgba(124,58,237,.28)',
+  outer:   '#f0f2f6',   // neutral gray outer
+  card:    '#ffffff',   // white card
+  el:      '#f7f8fb',   // off-white elements
+  el2:     '#eef1f7',   // slightly darker elements
+  border:  '#e3e6ef',   // subtle border
+  border2: '#d4d8e8',   // slightly stronger border
+  accent:  '#7c3aed',   // violet (GEMS brand)
+  acBg:    'rgba(124,58,237,.07)',
+  acBorder:'rgba(124,58,237,.2)',
   indigo:  '#4f46e5',
-  t0:      '#eef0ff',  // primary text
-  t1:      '#8890a8',  // secondary
-  t2:      '#444c68',  // tertiary
-  success: '#22c55e',
-  warn:    '#f59e0b',
-  err:     '#ef4444',
+  t0:      '#111827',   // primary text
+  t1:      '#6b7280',   // secondary text
+  t2:      '#9ca3af',   // tertiary text
+  success: '#16a34a',
+  warn:    '#d97706',
+  err:     '#dc2626',
 };
 
-// Priority config (dark-optimized colors)
+// Priority config (light-optimized colors)
 const PRI = {
-  critical:{ stripe:'#ef4444', bg:'rgba(239,68,68,.12)',  text:'#f87171', border:'rgba(239,68,68,.25)',  label:'Crítica' },
-  high:    { stripe:'#f97316', bg:'rgba(249,115,22,.12)', text:'#fb923c', border:'rgba(249,115,22,.25)', label:'Alta'    },
-  medium:  { stripe:'#eab308', bg:'rgba(234,179,8,.12)',  text:'#fbbf24', border:'rgba(234,179,8,.25)',  label:'Media'   },
-  low:     { stripe:'#22c55e', bg:'rgba(34,197,94,.12)',  text:'#4ade80', border:'rgba(34,197,94,.25)',  label:'Baja'    },
+  critical:{ stripe:'#ef4444', bg:'#fef2f2', text:'#dc2626', border:'#fecaca', label:'Crítica' },
+  high:    { stripe:'#f97316', bg:'#fff7ed', text:'#c2410c', border:'#fed7aa', label:'Alta'    },
+  medium:  { stripe:'#eab308', bg:'#fefce8', text:'#a16207', border:'#fde68a', label:'Media'   },
+  low:     { stripe:'#22c55e', bg:'#f0fdf4', text:'#15803d', border:'#bbf7d0', label:'Baja'    },
 };
-function pri(p) { return PRI[p] || { stripe:'#7c3aed', bg:D.acBg, text:'#a78bfa', border:D.acBorder, label: p||'Media' }; }
+function pri(p) { return PRI[p] || { stripe:'#7c3aed', bg:D.acBg, text:'#6d28d9', border:D.acBorder, label: p||'Media' }; }
 
 // Badge pills
 function badge(label, bg, text, border) {
   return `<span style="display:inline-block;background:${bg};color:${text};border:1px solid ${border};border-radius:20px;padding:2px 11px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;">${esc(label)}</span>`;
 }
 function priBadge(p)   { const c=pri(p); return badge(c.label, c.bg, c.text, c.border); }
-function typBadge(t)   { if(!t) return ''; return `&nbsp;${badge(t, D.acBg, '#a78bfa', D.acBorder)}`; }
+function typBadge(t)   { if(!t) return ''; return `&nbsp;${badge(t, D.acBg, '#6d28d9', D.acBorder)}`; }
 
 // Avatar initial circle
 function avatar(name, size=40, bg=`linear-gradient(135deg,${D.indigo},${D.accent})`) {
@@ -84,8 +83,8 @@ function emailBase({ preheader, headerRow, bodyRows, footerExtra='' }) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <meta name="x-apple-disable-message-reformatting">
-  <meta name="color-scheme" content="dark">
-  <meta name="supported-color-schemes" content="dark">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
   <title>GEMS Hub</title>
   <style>
     @media only screen and (max-width:600px){
@@ -153,7 +152,7 @@ function ctaRow(url, label, bg=D.accent) {
     <td class="pad" style="padding:0 28px 28px;" align="center">
       <table role="presentation" align="center" cellspacing="0" cellpadding="0" border="0">
         <tr>
-          <td style="background:${bg};border-radius:9px;box-shadow:0 0 20px rgba(124,58,237,.3);">
+          <td style="background:${bg};border-radius:9px;box-shadow:0 4px 14px rgba(124,58,237,.22);">
             <a href="${url}" style="display:inline-block;padding:13px 44px;font-size:14px;font-weight:700;color:#fff;text-decoration:none;border-radius:9px;letter-spacing:.1px;">
               ${label}
             </a>
@@ -181,7 +180,7 @@ function taskAssignedHtml(task, assignee, creator) {
     ? new Date(task.dueDate).toLocaleDateString('es-CR',{year:'numeric',month:'long',day:'numeric'})
     : null;
 
-  const notifBadge = `<span style="background:${D.acBg};border:1px solid ${D.acBorder};color:#a78bfa;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px;">
+  const notifBadge = `<span style="background:${D.acBg};border:1px solid ${D.acBorder};color:#6d28d9;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px;">
     Nueva ${typeLabel}
   </span>`;
 
@@ -301,11 +300,11 @@ function mentionEmailHtml(mentionedUser, sender, resourceTitle, commentText, res
 
   const highlightedText = esc(commentText)
     .replace(/@([\wÀ-ž_]+)/g,
-      `<span style="background:${D.acBg};color:#c4b5fd;padding:1px 5px;border-radius:4px;font-weight:700;">@$1</span>`);
+      `<span style="background:${D.acBg};color:#7c3aed;padding:1px 5px;border-radius:4px;font-weight:700;">@$1</span>`);
 
   const senderInitial = esc((sender.name||'?').trim()[0]).toUpperCase();
 
-  const notifBadge = `<span style="background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.25);color:#c4b5fd;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px;">
+  const notifBadge = `<span style="background:rgba(109,40,217,.07);border:1px solid rgba(109,40,217,.2);color:#7c3aed;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px;">
     Mención
   </span>`;
 
@@ -348,7 +347,7 @@ function mentionEmailHtml(mentionedUser, sender, resourceTitle, commentText, res
                     <span style="font-size:11px;color:${D.t2};margin-left:8px;">comentó</span>
                   </td>
                   <td align="right" style="vertical-align:middle;">
-                    <span style="background:${D.acBg};color:#c4b5fd;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;border:1px solid ${D.acBorder};">@${esc(mentionedUser.name.split(' ')[0])}</span>
+                    <span style="background:${D.acBg};color:#7c3aed;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;border:1px solid ${D.acBorder};">@${esc(mentionedUser.name.split(' ')[0])}</span>
                   </td>
                 </tr>
               </table>
@@ -446,7 +445,7 @@ async function sendVerificationEmail(user, token) {
                     <p style="margin:0;font-size:12px;color:${D.t1};">Sin tarjeta de crédito &nbsp;·&nbsp; Cancela cuando quieras</p>
                   </td>
                   <td align="right" style="vertical-align:middle;">
-                    <span style="background:rgba(34,197,94,.12);color:#4ade80;border:1px solid rgba(34,197,94,.25);border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700;">Activo</span>
+                    <span style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:700;">Activo</span>
                   </td>
                 </tr>
               </table>
@@ -503,7 +502,7 @@ async function sendVerificationEmail(user, token) {
       <td class="pad" style="padding:28px 28px 8px;" align="center">
         <table role="presentation" align="center" cellspacing="0" cellpadding="0" border="0">
           <tr>
-            <td style="background:linear-gradient(135deg,${D.indigo},${D.accent});border-radius:9px;box-shadow:0 0 24px rgba(124,58,237,.35);">
+            <td style="background:linear-gradient(135deg,${D.indigo},${D.accent});border-radius:9px;box-shadow:0 4px 18px rgba(124,58,237,.28);">
               <a href="${verifyUrl}" style="display:inline-block;padding:14px 52px;font-size:15px;font-weight:800;color:#fff;text-decoration:none;border-radius:9px;letter-spacing:.1px;">
                 Verificar mi cuenta →
               </a>
@@ -517,7 +516,7 @@ async function sendVerificationEmail(user, token) {
     <tr>
       <td style="padding:16px 28px 28px;text-align:center;">
         <p style="margin:0 0 4px;font-size:11px;color:${D.t2};">¿El botón no funciona? Copia este enlace:</p>
-        <a href="${verifyUrl}" style="font-size:11px;color:#a78bfa;word-break:break-all;">${verifyUrl}</a>
+        <a href="${verifyUrl}" style="font-size:11px;color:#6d28d9;word-break:break-all;">${verifyUrl}</a>
       </td>
     </tr>
   `;
@@ -527,7 +526,7 @@ async function sendVerificationEmail(user, token) {
     subject: '¡Activa tu cuenta en GEMS Hub! 🚀',
     html: emailBase({
       preheader: `${user.name}, activa tu cuenta para comenzar tu free trial de 14 días.`,
-      headerRow: `<span style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);color:#4ade80;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px;">Nuevo usuario</span>`,
+      headerRow: `<span style="background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px;">Nuevo usuario</span>`,
       bodyRows,
     }),
   });
@@ -576,10 +575,10 @@ function ticketCreatedClientHtml(ticket) {
     <tr>
       <td class="pad" style="padding:0 28px 20px;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-          style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.18);border-radius:8px;padding:12px 16px;">
+          style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;">
           <tr>
             <td style="font-size:15px;padding-right:10px;vertical-align:middle;">✅</td>
-            <td style="font-size:13px;color:#4ade80;line-height:1.5;">Recibirás actualizaciones por correo cuando el estado cambie.</td>
+            <td style="font-size:13px;color:#15803d;line-height:1.5;">Recibirás actualizaciones por correo cuando el estado cambie.</td>
           </tr>
         </table>
       </td>
@@ -590,7 +589,7 @@ function ticketCreatedClientHtml(ticket) {
 
   return emailBase({
     preheader: `Ticket #${ticketId} recibido: ${ticket.subject}`,
-    headerRow: `<span style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);color:#60a5fa;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">Soporte</span>`,
+    headerRow: `<span style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);color:#2563eb;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">Soporte</span>`,
     bodyRows,
   });
 }
@@ -676,7 +675,7 @@ function ticketCreatedInternalHtml(ticket, assignedAgent) {
 
   return emailBase({
     preheader: `Nuevo ticket de ${ticket.submittedBy?.name}: "${ticket.subject}"`,
-    headerRow: `<span style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);color:#4ade80;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">Interno</span>`,
+    headerRow: `<span style="background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">Interno</span>`,
     bodyRows,
   });
 }
@@ -684,7 +683,7 @@ function ticketCreatedInternalHtml(ticket, assignedAgent) {
 // ─── Estado de ticket cambiado ────────────────────────────────────────────────
 function ticketStatusChangedHtml(ticket, oldStatus, newStatus) {
   const ticketId  = esc(String(ticket.ticketNumber || ticket._id));
-  const statusCol = { open:'#60a5fa', 'in-progress':'#fbbf24', resolved:'#4ade80', closed:'#8b92a5' };
+  const statusCol = { open:'#2563eb', 'in-progress':'#d97706', resolved:'#15803d', closed:'#6b7280' };
   const newCol    = statusCol[newStatus] || D.accent;
 
   const bodyRows = `
@@ -739,7 +738,7 @@ function ticketStatusChangedHtml(ticket, oldStatus, newStatus) {
 function ticketCommentHtml({ ticket, commentText, authorName, isAgentReply }) {
   const ticketId   = esc(String(ticket.ticketNumber || ticket._id));
   const recipName  = isAgentReply ? esc(ticket.submittedBy?.name||'Cliente') : esc(ticket.assignedTo?.name||'Agente');
-  const tagColor   = isAgentReply ? '#60a5fa' : '#fbbf24';
+  const tagColor   = isAgentReply ? '#2563eb' : '#fbbf24';
   const tagBg      = isAgentReply ? 'rgba(96,165,250,.1)' : 'rgba(251,191,36,.1)';
   const tagBorder  = isAgentReply ? 'rgba(96,165,250,.25)' : 'rgba(251,191,36,.25)';
   const initials   = esc((authorName||'?').trim()[0]).toUpperCase();
@@ -801,14 +800,14 @@ function slAlertHtml(ticket) {
     <tr>
       <td class="pad" style="padding:28px 28px 20px;">
         <h1 style="margin:0 0 6px;font-size:20px;font-weight:800;color:${D.t0};">⚠️ Alerta de SLA</h1>
-        <p style="margin:0;font-size:14px;color:${D.t1};">El ticket <strong style="color:#f87171;">#${ticketId}</strong> lleva más de 2 horas sin ser atendido.</p>
+        <p style="margin:0;font-size:14px;color:${D.t1};">El ticket <strong style="color:#dc2626;">#${ticketId}</strong> lleva más de 2 horas sin ser atendido.</p>
       </td>
     </tr>
 
     <tr>
       <td class="pad" style="padding:0 28px 20px;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-          style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.22);border-radius:10px;overflow:hidden;">
+          style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;overflow:hidden;">
           <tr>
             <td style="width:3px;background:#ef4444;padding:0;"></td>
             <td style="padding:16px 18px;">
@@ -817,7 +816,7 @@ function slAlertHtml(ticket) {
                 <tr>
                   <td style="padding-right:10px;">${priBadge(ticket.priority)}</td>
                   <td>
-                    <span style="background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.25);border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;">${esc(ticket.status)}</span>
+                    <span style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;">${esc(ticket.status)}</span>
                   </td>
                 </tr>
               </table>
@@ -833,7 +832,7 @@ function slAlertHtml(ticket) {
 
   return emailBase({
     preheader: `⚠️ ALERTA SLA: Ticket #${ticketId} sin atender por 2+ horas`,
-    headerRow: `<span style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.28);color:#f87171;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">🚨 SLA</span>`,
+    headerRow: `<span style="background:#fef2f2;border:1px solid #fecaca;color:#dc2626;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;">🚨 SLA</span>`,
     bodyRows,
   });
 }
@@ -906,3 +905,4 @@ module.exports = {
   notifyTaskAssigned,
   notifyMentionEmail,
 };
+
