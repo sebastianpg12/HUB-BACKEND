@@ -17,8 +17,9 @@ RUN apk add --no-cache \
   ca-certificates \
   ttf-freefont
 
+# chromium binary path differs between amd64 and arm64 on Alpine
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     NODE_ENV=production
 
 COPY --from=deps /app/node_modules ./node_modules
