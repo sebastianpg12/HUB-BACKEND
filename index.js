@@ -100,10 +100,15 @@ if (process.env.REDIS_URL) {
 }
 
 // Construye un RedisStore si Redis está disponible, o undefined para usar memoria.
+// sendCommand tiene try/catch: si Redis cae en runtime, el limiter usa passOnStoreError
+// y deja pasar la petición en lugar de romper el servidor.
 function makeStore(prefix) {
   if (!redisClient) return undefined;
   return new RedisStore({
-    sendCommand: (...args) => redisClient.call(...args),
+    sendCommand: async (...args) => {
+      if (!redisReady) throw new Error('Redis no disponible');
+      return redisClient.call(...args);
+    },
     prefix,
   });
 }
@@ -142,6 +147,7 @@ const generalLimiter = rateLimit({
   max: 50,                       // 50 solicitudes por minuto
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: true,        // si Redis falla, deja pasar en lugar de romper
   store: makeStore('rl:gen:'),
   handler: async (req, res) => {
     await banIp(req.ip);
@@ -159,6 +165,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,  // no penaliza logins correctos
+  passOnStoreError: true,
   store: makeStore('rl:auth:'),
   handler: async (req, res) => {
     await banIp(req.ip);
@@ -175,6 +182,7 @@ const refreshLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: true,
   store: makeStore('rl:refresh:'),
   message: { success: false, message: 'Demasiadas renovaciones de sesión.' },
 });
@@ -185,6 +193,7 @@ const registerOrgLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  passOnStoreError: true,
   store: makeStore('rl:regorgs:'),
   message: { success: false, message: 'Demasiados intentos de registro. Intenta en 1 hora.' },
 });
