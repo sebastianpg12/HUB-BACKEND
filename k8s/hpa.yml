@@ -9,8 +9,8 @@ spec:
     kind: Deployment
     name: hub-backend
 
-  minReplicas: 2
-  maxReplicas: 10
+  minReplicas: 1
+  maxReplicas: 5
 
   metrics:
     # Escala cuando CPU supere el 80%
