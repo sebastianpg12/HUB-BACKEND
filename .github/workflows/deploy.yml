@@ -82,13 +82,44 @@ jobs:
         run: |
           echo "image=${{ env.REGISTRY }}/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]'):sha-$(echo '${{ github.sha }}' | cut -c1-7)" >> $GITHUB_OUTPUT
 
-      - name: Copy k8s manifests to VM
+      - name: Generar archivos de deploy en el runner
+        id: files
+        run: |
+          IMAGE_TAG=${{ steps.vars.outputs.image }}
+
+          # secrets.env — valores entre comillas simples para evitar expansión en bash
+          cat > secrets.env << 'ENVEOF'
+          NODE_ENV=${{ secrets.NODE_ENV }}
+          PORT=4000
+          MONGO_URI=${{ secrets.MONGO_URI }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN }}
+          APP_URL=${{ secrets.APP_URL }}
+          CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+          SUPPORT_EMAIL=${{ secrets.SUPPORT_EMAIL }}
+          SMTP_HOST=${{ secrets.SMTP_HOST }}
+          SMTP_PORT=${{ secrets.SMTP_PORT }}
+          SMTP_SECURE=${{ secrets.SMTP_SECURE }}
+          SMTP_USER=${{ secrets.SMTP_USER }}
+          SMTP_PASS=${{ secrets.SMTP_PASS }}
+          GITHUB_TOKEN=${{ secrets.GH_TOKEN }}
+          GITHUB_WEBHOOK_SECRET=${{ secrets.GH_WEBHOOK_SECRET }}
+          WPP_SESSION_PATH=${{ secrets.WPP_SESSION_PATH }}
+          ENVEOF
+
+          # deployment con imagen ya reemplazada
+          sed "s|IMAGE_PLACEHOLDER|$IMAGE_TAG|g" k8s/deployment.yml > k8s/deployment-final.yml
+
+      - name: Copiar archivos a la VM
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.ORACLE_VM_HOST }}
           username: ${{ secrets.ORACLE_VM_USER }}
           key: ${{ secrets.ORACLE_VM_SSH_KEY }}
-          source: k8s/
+          source: k8s/,secrets.env
           target: /opt/hub-backend
 
       - name: Deploy on VM via SSH
@@ -106,13 +137,13 @@ jobs:
             set -e
             export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
-            # ── 1. Crear/actualizar namespace y recursos base ──
+            # ── 1. Namespace y recursos base ──
             kubectl apply -f /opt/hub-backend/k8s/namespace.yml
             kubectl apply -f /opt/hub-backend/k8s/pvc.yml
             kubectl apply -f /opt/hub-backend/k8s/service.yml
             kubectl apply -f /opt/hub-backend/k8s/hpa.yml
 
-            # ── 2. Crear/actualizar secret de GHCR para pull de imagen privada ──
+            # ── 2. Secret de GHCR para pull de imagen privada ──
             kubectl create secret docker-registry ghcr-secret \
               --namespace=hub \
               --docker-server=ghcr.io \
@@ -120,40 +151,23 @@ jobs:
               --docker-password="$GITHUB_TOKEN_VAL" \
               --dry-run=client -o yaml | kubectl apply -f -
 
-            # ── 3. Crear/actualizar secret con variables de entorno de la app ──
+            # ── 3. Secret de variables de entorno (desde archivo, evita problemas con chars especiales) ──
             kubectl create secret generic hub-backend-secret \
               --namespace=hub \
-              --from-literal=NODE_ENV="${{ secrets.NODE_ENV }}" \
-              --from-literal=PORT="4000" \
-              --from-literal=MONGO_URI="${{ secrets.MONGO_URI }}" \
-              --from-literal=JWT_SECRET="${{ secrets.JWT_SECRET }}" \
-              --from-literal=JWT_EXPIRES_IN="${{ secrets.JWT_EXPIRES_IN }}" \
-              --from-literal=APP_URL="${{ secrets.APP_URL }}" \
-              --from-literal=CORS_ORIGINS="${{ secrets.CORS_ORIGINS }}" \
-              --from-literal=GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
-              --from-literal=RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
-              --from-literal=EMAIL_FROM="${{ secrets.EMAIL_FROM }}" \
-              --from-literal=SUPPORT_EMAIL="${{ secrets.SUPPORT_EMAIL }}" \
-              --from-literal=SMTP_HOST="${{ secrets.SMTP_HOST }}" \
-              --from-literal=SMTP_PORT="${{ secrets.SMTP_PORT }}" \
-              --from-literal=SMTP_SECURE="${{ secrets.SMTP_SECURE }}" \
-              --from-literal=SMTP_USER="${{ secrets.SMTP_USER }}" \
-              --from-literal=SMTP_PASS="${{ secrets.SMTP_PASS }}" \
-              --from-literal=GITHUB_TOKEN="${{ secrets.GH_TOKEN }}" \
-              --from-literal=GITHUB_WEBHOOK_SECRET="${{ secrets.GH_WEBHOOK_SECRET }}" \
-              --from-literal=WPP_SESSION_PATH="${{ secrets.WPP_SESSION_PATH }}" \
+              --from-env-file=/opt/hub-backend/secrets.env \
               --dry-run=client -o yaml | kubectl apply -f -
 
-            # ── 4. Aplicar deployment con la imagen nueva ──
-            sed "s|IMAGE_PLACEHOLDER|$IMAGE_TAG|g" /opt/hub-backend/k8s/deployment.yml \
-              | kubectl apply -f -
+            # Eliminar el archivo de secrets de la VM por seguridad
+            rm -f /opt/hub-backend/secrets.env
 
-            # ── 5. Forzar rolling update (reemplaza todos los pods aunque la imagen no cambie) ──
+            # ── 4. Aplicar deployment con imagen nueva ──
+            kubectl apply -f /opt/hub-backend/k8s/deployment-final.yml
+
+            # ── 5. Forzar rolling update ──
             kubectl rollout restart deployment/hub-backend -n hub
 
             # ── 6. Esperar a que el rollout complete ──
             kubectl rollout status deployment/hub-backend -n hub --timeout=180s
 
             echo "✅ Deploy complete — imagen: $IMAGE_TAG — $(date)"
-            echo ""
             kubectl get pods -n hub
