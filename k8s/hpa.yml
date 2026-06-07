@@ -1,0 +1,44 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hub-backend-hpa
+  namespace: hub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hub-backend
+
+  minReplicas: 3
+  maxReplicas: 10
+
+  metrics:
+    # Escala cuando CPU supere el 80%
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+    # Escala cuando RAM supere el 80%
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60   # Espera 1 min antes de escalar hacia arriba
+      policies:
+        - type: Pods
+          value: 1                      # Agrega 1 pod a la vez
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Espera 5 min antes de reducir pods
+      policies:
+        - type: Pods
+          value: 1                      # Elimina 1 pod a la vez
+          periodSeconds: 120

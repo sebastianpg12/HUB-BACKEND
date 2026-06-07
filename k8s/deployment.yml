@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hub-backend
+  namespace: hub
+  labels:
+    app: hub-backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: hub-backend
+
+  # Reemplaza pods gradualmente en cada deploy — sin downtime
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # Crea 1 pod nuevo antes de eliminar uno viejo
+      maxUnavailable: 0  # Nunca baja de 3 pods disponibles durante el deploy
+
+  template:
+    metadata:
+      labels:
+        app: hub-backend
+    spec:
+      # Credenciales para bajar la imagen privada de GHCR
+      imagePullSecrets:
+        - name: ghcr-secret
+
+      containers:
+        - name: hub-backend
+          image: IMAGE_PLACEHOLDER   # Reemplazado por el workflow en cada deploy
+          imagePullPolicy: Always    # Fuerza bajarse la imagen nueva en cada pod
+
+          ports:
+            - containerPort: 4000
+
+          # Recursos — necesarios para que el HPA calcule porcentajes
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          # Variables de entorno desde el Secret de k8s
+          envFrom:
+            - secretRef:
+                name: hub-backend-secret
+
+          # Volumen persistente para uploads
+          volumeMounts:
+            - name: uploads
+              mountPath: /app/uploads
+            - name: wpp-sessions
+              mountPath: /app/wpp-sessions
+
+          # Healthcheck — k8s reinicia el pod si falla
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 4000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: hub-uploads-pvc
+        - name: wpp-sessions
+          persistentVolumeClaim:
+            claimName: hub-wpp-pvc
