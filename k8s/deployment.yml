@@ -38,10 +38,10 @@ spec:
           # Recursos — necesarios para que el HPA calcule porcentajes
           resources:
             requests:
-              cpu: 250m
-              memory: 256Mi
+              cpu: 100m
+              memory: 128Mi
             limits:
-              cpu: 500m
+              cpu: 400m
               memory: 512Mi
 
           # Variables de entorno desde el Secret de k8s

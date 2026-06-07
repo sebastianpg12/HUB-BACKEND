@@ -9,7 +9,7 @@ spec:
     kind: Deployment
     name: hub-backend
 
-  minReplicas: 3
+  minReplicas: 2
   maxReplicas: 10
 
   metrics:
