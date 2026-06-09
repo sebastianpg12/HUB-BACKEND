@@ -148,6 +148,7 @@ const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   passOnStoreError: true,        // si Redis falla, deja pasar en lugar de romper
+  skip: () => process.env.NODE_ENV !== 'production', // en dev no bloquea
   store: makeStore('rl:gen:'),
   handler: async (req, res) => {
     await banIp(req.ip);
@@ -166,6 +167,7 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   skipSuccessfulRequests: true,  // no penaliza logins correctos
   passOnStoreError: true,
+  skip: () => process.env.NODE_ENV !== 'production', // en dev no bloquea
   store: makeStore('rl:auth:'),
   handler: async (req, res) => {
     await banIp(req.ip);
