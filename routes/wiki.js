@@ -22,11 +22,35 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
+// Árbol de páginas (ligero, para el sidebar)
+router.get('/tree', async (req, res) => {
+  try {
+    const pages = await Wiki.find({ archived: { $ne: true } })
+      .select('titulo parentId order icon updatedAt')
+      .sort({ order: 1, createdAt: 1 });
+    res.json({ success: true, data: pages });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Páginas archivadas
+router.get('/archived', async (req, res) => {
+  try {
+    const pages = await Wiki.find({ archived: true })
+      .select('titulo parentId order icon updatedAt')
+      .sort({ updatedAt: -1 });
+    res.json({ success: true, data: pages });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Obtener todos los artículos de la wiki
 router.get('/', async (req, res) => {
   try {
     const { categoria, search } = req.query;
-    let query = {};
+    let query = { archived: { $ne: true } };
     if (categoria) query.categoria = categoria;
     if (search) {
       const safe = escapeRegex(search);
@@ -64,13 +88,17 @@ router.get('/:id', async (req, res) => {
 // Crear un nuevo artículo
 router.post('/', upload.array('archivos', 5), async (req, res) => {
   try {
-    const wikiData = { 
-      ...req.body, 
+    const wikiData = {
+      ...req.body,
       organizationId: req.organizationId,
       autor: req.userId || req.body.autor
     };
-    console.log('[DEBUG WIKI POST] req.organizationId:', req.organizationId);
-    console.log('[DEBUG WIKI POST] wikiData.organizationId:', wikiData.organizationId);
+    if (wikiData.parentId === '' || wikiData.parentId === 'null') wikiData.parentId = null;
+    if (wikiData.order === undefined) {
+      const last = await Wiki.findOne({ parentId: wikiData.parentId || null })
+        .sort({ order: -1 }).select('order');
+      wikiData.order = last ? last.order + 1 : 0;
+    }
     if (req.files) {
       wikiData.archivos = req.files.map(file => ({
         nombre: file.originalname,
@@ -90,10 +118,11 @@ router.post('/', upload.array('archivos', 5), async (req, res) => {
 // Actualizar un artículo
 router.put('/:id', upload.array('archivos', 5), async (req, res) => {
   try {
-    const updateData = { 
+    const updateData = {
       ...req.body,
-      organizationId: req.organizationId 
+      organizationId: req.organizationId
     };
+    if (updateData.parentId === '' || updateData.parentId === 'null') updateData.parentId = null;
     const article = await Wiki.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!article) return res.status(404).json({ message: 'Artículo no encontrado' });
 
@@ -114,13 +143,99 @@ router.put('/:id', upload.array('archivos', 5), async (req, res) => {
   }
 });
 
-// Eliminar un artículo
+// Mover / reordenar página (cambiar padre y/u orden)
+router.patch('/:id/move', async (req, res) => {
+  try {
+    const { parentId, order } = req.body;
+    const page = await Wiki.findOne({ _id: req.params.id, organizationId: req.organizationId });
+    if (!page) return res.status(404).json({ success: false, message: 'Página no encontrada' });
+
+    if (parentId !== undefined) {
+      const newParent = parentId || null;
+      // Evitar ciclos: el nuevo padre no puede ser la propia página ni un descendiente
+      if (newParent) {
+        if (String(newParent) === String(page._id)) {
+          return res.status(400).json({ success: false, message: 'Una página no puede ser su propio padre' });
+        }
+        let cursor = await Wiki.findById(newParent).select('parentId');
+        while (cursor) {
+          if (String(cursor._id) === String(page._id)) {
+            return res.status(400).json({ success: false, message: 'No se puede mover dentro de una sub-página propia' });
+          }
+          cursor = cursor.parentId ? await Wiki.findById(cursor.parentId).select('parentId') : null;
+        }
+      }
+      page.parentId = newParent;
+    }
+    if (order !== undefined) page.order = order;
+    await page.save();
+    res.json({ success: true, data: page });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Archivar página (y sus descendientes)
+router.patch('/:id/archive', async (req, res) => {
+  try {
+    const page = await Wiki.findOne({ _id: req.params.id, organizationId: req.organizationId });
+    if (!page) return res.status(404).json({ success: false, message: 'Página no encontrada' });
+
+    const idsToArchive = [page._id];
+    let frontier = [page._id];
+    while (frontier.length) {
+      const children = await Wiki.find({ parentId: { $in: frontier } }).select('_id');
+      frontier = children.map(c => c._id);
+      idsToArchive.push(...frontier);
+    }
+    await Wiki.updateMany({ _id: { $in: idsToArchive } }, { archived: true });
+    res.json({ success: true, message: 'Página archivada', data: { archivedIds: idsToArchive } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Restaurar página archivada (vuelve como raíz si su padre sigue archivado)
+router.patch('/:id/restore', async (req, res) => {
+  try {
+    const page = await Wiki.findOne({ _id: req.params.id, organizationId: req.organizationId });
+    if (!page) return res.status(404).json({ success: false, message: 'Página no encontrada' });
+
+    page.archived = false;
+    if (page.parentId) {
+      const parent = await Wiki.findById(page.parentId).select('archived');
+      if (!parent || parent.archived) page.parentId = null;
+    }
+    await page.save();
+    res.json({ success: true, data: page });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Eliminar un artículo: por defecto archiva; ?permanent=true borra de verdad
 router.delete('/:id', async (req, res) => {
   try {
-    await Wiki.findOneAndDelete({ _id: req.params.id, organizationId: req.organizationId });
-    res.json({ message: 'Artículo eliminado' });
+    const page = await Wiki.findOne({ _id: req.params.id, organizationId: req.organizationId });
+    if (!page) return res.status(404).json({ success: false, message: 'Página no encontrada' });
+
+    if (req.query.permanent === 'true') {
+      const idsToDelete = [page._id];
+      let frontier = [page._id];
+      while (frontier.length) {
+        const children = await Wiki.find({ parentId: { $in: frontier } }).select('_id');
+        frontier = children.map(c => c._id);
+        idsToDelete.push(...frontier);
+      }
+      await Wiki.deleteMany({ _id: { $in: idsToDelete } });
+      return res.json({ success: true, message: 'Página eliminada permanentemente' });
+    }
+
+    page.archived = true;
+    await page.save();
+    res.json({ success: true, message: 'Página archivada' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

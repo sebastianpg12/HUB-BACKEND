@@ -14,7 +14,26 @@ const wikiSchema = new mongoose.Schema({
   },
   contenido: {
     type: String,
-    required: true
+    default: ''
+  },
+  parentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Wiki',
+    default: null,
+    index: true
+  },
+  order: {
+    type: Number,
+    default: 0
+  },
+  archived: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  icon: {
+    type: String,
+    default: ''
   },
   descripcion: {
     type: String,
