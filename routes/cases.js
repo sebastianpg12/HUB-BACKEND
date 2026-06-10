@@ -122,13 +122,6 @@ router.get('/:id', async (req, res) => {
 // POST - Crear nuevo caso (con archivos opcionales)
 router.post('/', upload.array('archivos', 10), async (req, res) => {
   try {
-    console.log('=== CASE CREATION DEBUG ===');
-    console.log('Request headers:', req.headers);
-    console.log('Request body:', req.body);
-    console.log('Files received:', req.files);
-    console.log('Body keys:', Object.keys(req.body));
-    console.log('Body values:', Object.values(req.body));
-    
     // Crear el caso con los datos del formulario
     const caseData = {
       titulo: req.body.titulo,
@@ -138,6 +131,8 @@ router.post('/', upload.array('archivos', 10), async (req, res) => {
       prioridad: req.body.prioridad || 'media',
       progreso: req.body.progreso ? parseInt(req.body.progreso) : 0,
       cliente_id: req.body.cliente_id || null,
+      asignado_a: req.body.asignado_a || null,
+      fecha_limite: req.body.fecha_limite || null,
       categoria: req.body.categoria || '',
       archivos: []
     };
@@ -233,12 +228,55 @@ router.delete('/:id/files/:fileIndex', async (req, res) => {
   }
 });
 
+// PATCH - Cambiar estado con log automático en el timeline
+router.patch('/:id/estado', async (req, res) => {
+  try {
+    const { estado } = req.body;
+    const VALID = ['abierto', 'en_progreso', 'resuelto', 'cerrado'];
+    if (!VALID.includes(estado)) {
+      return res.status(400).json({ error: 'Estado inválido' });
+    }
+
+    const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
+    if (!case_item) {
+      return res.status(404).json({ error: 'Caso no encontrado' });
+    }
+    if (case_item.estado === estado) {
+      return res.status(400).json({ error: 'El caso ya está en ese estado' });
+    }
+
+    const LABELS = { abierto: 'Abierto', en_progreso: 'En progreso', resuelto: 'Resuelto', cerrado: 'Cerrado' };
+    case_item.comentarios.push({
+      autor: req.userId || null,
+      comentario: `Estado cambiado de ${LABELS[case_item.estado]} a ${LABELS[estado]}`,
+      tipo: estado === 'resuelto' ? 'resolucion' : 'actualizacion',
+      fecha: new Date()
+    });
+    case_item.estado = estado;
+    if (estado === 'resuelto' || estado === 'cerrado') {
+      case_item.fecha_resolucion = case_item.fecha_resolucion || new Date();
+    } else {
+      case_item.fecha_resolucion = null;
+    }
+    await case_item.save();
+
+    const populated = await Case.findOne({ _id: case_item._id, organizationId: req.organizationId })
+      .populate('cliente_id', 'nombre empresa email')
+      .populate('asignado_a', 'name email role avatar')
+      .populate('comentarios.autor', 'name email avatar')
+      .populate('dailyLogs.autor', 'name email avatar')
+      .populate('linkedTickets', 'subject ticketNumber status');
+
+    res.json(populated);
+  } catch (error) {
+    console.error('Error changing case status:', error);
+    res.status(500).json({ error: 'Error al cambiar el estado' });
+  }
+});
+
 // PUT - Actualizar caso (con archivos opcionales)
 router.put('/:id', upload.array('archivos', 10), async (req, res) => {
   try {
-    console.log('Updating case with body:', req.body);
-    console.log('Files received:', req.files);
-    
     const case_item = await Case.findOne({ _id: req.params.id, organizationId: req.organizationId });
     if (!case_item) {
       return res.status(404).json({ error: 'Caso no encontrado' });

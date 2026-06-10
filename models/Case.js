@@ -36,10 +36,10 @@ const CaseSchema = new mongoose.Schema({
     ref: 'Client',
     required: false 
   },
-  asignado_a: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'Team',
-    required: false 
+  asignado_a: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false
   },
   
   // Archivos y documentos
@@ -63,9 +63,9 @@ const CaseSchema = new mongoose.Schema({
   
   // Seguimiento y comentarios
   comentarios: [{
-    autor: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: 'Team' 
+    autor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
     },
     comentario: String,
     fecha: { type: Date, default: Date.now },
@@ -120,7 +120,7 @@ const CaseSchema = new mongoose.Schema({
   // Nuevo: Seguimiento Diario (Daily Logs)
   dailyLogs: [{
     fecha: { type: Date, default: Date.now },
-    autor: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+    autor: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     que_se_hizo: String,
     bloqueos: String,
     siguientes_pasos: String,
