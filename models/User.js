@@ -96,6 +96,20 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  timezone: {
+    type: String,
+    default: 'America/Bogota'
+  },
+  preferences: {
+    language: { type: String, enum: ['es', 'en'], default: 'es' },
+    pushNotifications: { type: Boolean, default: true }
+  },
+  // Últimos accesos (máx 10) para "Mi actividad" en el perfil
+  loginHistory: [{
+    at: { type: Date, default: Date.now },
+    ip: String,
+    userAgent: String
+  }],
   permissions: {
     dashboard: { type: Boolean, default: true },
     clients: { 

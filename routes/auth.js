@@ -279,6 +279,12 @@ router.post('/login', async (req, res) => {
     }
 
     user.lastLogin = new Date();
+    // Registrar acceso (máx 10, más reciente primero)
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
+    user.loginHistory = [
+      { at: new Date(), ip, userAgent: req.headers['user-agent'] || '' },
+      ...(user.loginHistory || [])
+    ].slice(0, 10);
     await user.save();
 
     // 2FA check
@@ -474,7 +480,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
 // ───── PUT /profile ─────
 router.put('/profile', authenticateToken, async (req, res) => {
   try {
-    const { name, email, phone, avatar } = req.body;
+    const { name, email, phone, avatar, department, timezone, preferences } = req.body;
     if (!name || !email) {
       return res.status(400).json({ success: false, message: 'Nombre y email son requeridos' });
     }
@@ -485,14 +491,22 @@ router.put('/profile', authenticateToken, async (req, res) => {
       return res.status(400).json({ success: false, message: 'El email ya está en uso' });
     }
 
+    const update = {
+      name: name.trim(),
+      email: normalizedEmail,
+      phone: phone?.trim() || null,
+      avatar: avatar
+    };
+    if (department !== undefined) update.department = department?.trim() || null;
+    if (timezone !== undefined) update.timezone = timezone;
+    if (preferences !== undefined) {
+      if (preferences.language !== undefined) update['preferences.language'] = preferences.language;
+      if (preferences.pushNotifications !== undefined) update['preferences.pushNotifications'] = preferences.pushNotifications;
+    }
+
     const updated = await User.findByIdAndUpdate(
       req.user._id,
-      {
-        name: name.trim(),
-        email: normalizedEmail,
-        phone: phone?.trim() || null,
-        avatar: avatar
-      },
+      update,
       { new: true, runValidators: true }
     ).select('-password');
 
