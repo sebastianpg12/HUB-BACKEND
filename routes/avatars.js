@@ -181,8 +181,8 @@ router.post('/upload-photo', authenticateToken, uploadProfilePhoto.single('photo
       });
     }
 
-    // Ruta relativa para guardar en la BD (sin el path base del proyecto)
-    const relativePath = path.join('/uploads/profiles', req.file.filename);
+    // Ruta relativa para la BD: SIEMPRE con barras URL (no path.join, que en Windows usa '\')
+    const relativePath = `/uploads/profiles/${req.file.filename}`;
 
     // Actualizar el usuario con la nueva foto
     const updatedUser = await AvatarService.updateUserPhoto(req.user._id, relativePath);
